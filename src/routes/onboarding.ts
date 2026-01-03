@@ -45,6 +45,20 @@ function assignDifficulty(
 function validateOnboardingRequest(
   body: any
 ): { valid: boolean; error?: string } {
+  if (!body.childName || typeof body.childName !== 'string') {
+    return {
+      valid: false,
+      error: 'childName is required and must be a string',
+    };
+  }
+
+  if (body.childName.trim().length < 2) {
+    return {
+      valid: false,
+      error: 'childName must be at least 2 characters long',
+    };
+  }
+
   if (!body.childAge || typeof body.childAge !== 'number') {
     return { valid: false, error: 'childAge is required and must be a number' };
   }
@@ -150,6 +164,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       .from('user_profiles')
       .insert({
         user_id: userId,
+        child_name: onboardingData.childName.trim(),
         child_age: onboardingData.childAge,
         speech_level: onboardingData.speechLevel.toLowerCase(),
         initial_difficulty: difficulty,
@@ -176,6 +191,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
     // Return user profile
     const userProfile: UserProfile = {
       userId: userId,
+      childName: onboardingData.childName.trim(),
       speechLevel: onboardingData.speechLevel,
       initialDifficulty: difficulty,
       problemSounds: onboardingData.problemSounds,
