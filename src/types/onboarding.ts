@@ -3,6 +3,7 @@ export type DifficultyLevel = 'beginner' | 'intermediate' | 'advanced';
 
 /// Onboarding request from frontend
 export interface OnboardingRequest {
+  childName: string;
   childAge: number;
   speechLevel: string;
   problemSounds: string[];
@@ -12,6 +13,7 @@ export interface OnboardingRequest {
 /// User profile response
 export interface UserProfile {
   userId: string;
+  childName: string;
   speechLevel: string;
   initialDifficulty: DifficultyLevel;
   problemSounds: string[];
@@ -28,6 +30,7 @@ export interface ProfileCheckResponse {
 export interface DatabaseUserProfile {
   id: string;
   user_id: string;
+  child_name: string;
   child_age: number;
   speech_level: string;
   initial_difficulty: string;
@@ -36,4 +39,5 @@ export interface DatabaseUserProfile {
   created_at: string;
   updated_at: string;
 }
+
 
