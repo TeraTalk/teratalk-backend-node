@@ -10,6 +10,7 @@ import onboardingRoutes from './routes/onboarding';
 import profileRoutes from './routes/profile';
 import notificationRoutes from './routes/notifications';
 import notificationPreferencesRoutes from './routes/notification_preferences';
+import evaluationRoutes from './routes/evaluation';
 import { startNotificationScheduler } from './services/notification_scheduler';
 
 const app = express();
@@ -43,6 +44,9 @@ app.use('/api/notifications', notificationRoutes);
 
 // Notification preferences routes
 app.use('/api/notification-preferences', notificationPreferencesRoutes);
+
+// Evaluation routes
+app.use('/api/evaluation', evaluationRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {
