@@ -1,0 +1,22 @@
+{
+  "p": {"cv":["pa","pe","pi","po","pu"]},
+  "b": {"cv":["ba","be","bi","bo","bu"]},
+  "t": {"cv":["ta","te","ti","to","tu"]},
+  "d": {"cv":["da","de","di","do","du"]},
+  "k": {"cv":["ka","ke","ki","ko","ku"]},
+  "g": {"cv":["ga","ge","gi","go","gu"]},
+  "m": {"cv":["ma","me","mi","mo","mu"]},
+  "n": {"cv":["na","ne","ni","no","nu"]},
+  "ng": {"cv":["nga","nge","ngi","ngo","ngu"]},
+  "f": {"cv":["fa","fe","fi","fo","fu"]},
+  "s": {"cv":["sa","se","si","so","su"]},
+  "sh": {"cv":["sha","she","shi","sho","shu"]},
+  "ch": {"cv":["cha","che","chi","cho","chu"]},
+  "l": {"cv":["la","le","li","lo","lu"]},
+  "r": {"cv":["ra","re","ri","ro","ru"]},
+  "w": {"cv":["wa","we","wi","wo","wu"]},
+  "y": {"cv":["ya","ye","yi","yo","yu"]},
+  "h": {"cv":["ha","he","hi","ho","hu"]},
+  "th": {"cv":["tha","the","thi","tho","thu"]},
+  "dh": {"cv":["dha","dhe","dhi","dho","dhu"]}
+}
