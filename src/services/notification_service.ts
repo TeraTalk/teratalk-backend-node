@@ -12,7 +12,7 @@ export class NotificationService {
     deviceData: RegisterDeviceRequest
   ): Promise<{ success: boolean; error?: string }> {
     try {
-      // Check if device already exists
+      // Check if device already exists for this user
       const { data: existingDevice } = await supabase
         .from('user_devices')
         .select('id')
@@ -57,40 +57,115 @@ export class NotificationService {
         
         console.log(`[Device Registration] Updated existing device for user ${userId}, stored timezone: ${updatedDevice?.timezone || 'NULL'}`);
       } else {
-        // Insert new device
-        const insertData: any = {
-          user_id: userId,
-          fcm_token: deviceData.fcmToken,
-          device_id: deviceData.deviceId,
-          platform: deviceData.platform,
-        };
-        
-        // Add timezone if provided
-        if (deviceData.timezone !== undefined && deviceData.timezone !== null) {
-          insertData.timezone = deviceData.timezone;
-          console.log(`[Device Registration] Inserting with timezone: ${deviceData.timezone}`);
-        } else {
-          console.log(`[Device Registration] No timezone provided in insert`);
-        }
-        
-        console.log(`[Device Registration] Insert data:`, insertData);
-        
-        const { error } = await supabase.from('user_devices').insert(insertData);
-
-        if (error) {
-          console.error('[Device Registration] Error registering device:', error);
-          return { success: false, error: 'Failed to register device' };
-        }
-        
-        // Verify the insert
-        const { data: insertedDevice } = await supabase
+        // Check if FCM token is already registered to a different user
+        const { data: existingTokenDevice } = await supabase
           .from('user_devices')
-          .select('timezone')
-          .eq('user_id', userId)
-          .eq('device_id', deviceData.deviceId)
+          .select('id, user_id')
+          .eq('fcm_token', deviceData.fcmToken)
           .single();
-        
-        console.log(`[Device Registration] Registered new device for user ${userId}, stored timezone: ${insertedDevice?.timezone || 'NULL'}`);
+
+        if (existingTokenDevice) {
+          // FCM token exists for a different user - update it to the current user
+          console.log(`[Device Registration] FCM token already registered to user ${existingTokenDevice.user_id}, updating to user ${userId}`);
+          
+          const updateData: any = {
+            user_id: userId,
+            device_id: deviceData.deviceId,
+            platform: deviceData.platform,
+            updated_at: new Date().toISOString(),
+          };
+          
+          // Add timezone if provided
+          if (deviceData.timezone !== undefined && deviceData.timezone !== null) {
+            updateData.timezone = deviceData.timezone;
+            console.log(`[Device Registration] Updating timezone to: ${deviceData.timezone}`);
+          }
+          
+          const { error } = await supabase
+            .from('user_devices')
+            .update(updateData)
+            .eq('id', existingTokenDevice.id);
+
+          if (error) {
+            console.error('[Device Registration] Error updating device with existing token:', error);
+            return { success: false, error: 'Failed to update device' };
+          }
+          
+          console.log(`[Device Registration] Updated device from previous user to user ${userId}`);
+        } else {
+          // Insert new device
+          const insertData: any = {
+            user_id: userId,
+            fcm_token: deviceData.fcmToken,
+            device_id: deviceData.deviceId,
+            platform: deviceData.platform,
+          };
+          
+          // Add timezone if provided
+          if (deviceData.timezone !== undefined && deviceData.timezone !== null) {
+            insertData.timezone = deviceData.timezone;
+            console.log(`[Device Registration] Inserting with timezone: ${deviceData.timezone}`);
+          } else {
+            console.log(`[Device Registration] No timezone provided in insert`);
+          }
+          
+          console.log(`[Device Registration] Insert data:`, insertData);
+          
+          const { error } = await supabase.from('user_devices').insert(insertData);
+
+          if (error) {
+            console.error('[Device Registration] Error registering device:', error);
+            // If it's a duplicate key error, try to update instead
+            if (error.code === '23505') {
+              console.log(`[Device Registration] Duplicate key error, attempting to find and update existing record`);
+              // Try to find the existing record by FCM token and update it
+              const { data: duplicateDevice } = await supabase
+                .from('user_devices')
+                .select('id')
+                .eq('fcm_token', deviceData.fcmToken)
+                .single();
+              
+              if (duplicateDevice) {
+                const updateData: any = {
+                  user_id: userId,
+                  device_id: deviceData.deviceId,
+                  platform: deviceData.platform,
+                  updated_at: new Date().toISOString(),
+                };
+                
+                if (deviceData.timezone !== undefined && deviceData.timezone !== null) {
+                  updateData.timezone = deviceData.timezone;
+                }
+                
+                const { error: updateError } = await supabase
+                  .from('user_devices')
+                  .update(updateData)
+                  .eq('id', duplicateDevice.id);
+                
+                if (updateError) {
+                  console.error('[Device Registration] Error updating duplicate device:', updateError);
+                  return { success: false, error: 'Failed to register device' };
+                }
+                
+                console.log(`[Device Registration] Successfully updated duplicate device for user ${userId}`);
+              } else {
+                return { success: false, error: 'Failed to register device' };
+              }
+            } else {
+              return { success: false, error: 'Failed to register device' };
+            }
+          } else {
+            // Verify the insert
+            const { data: insertedDevice } = await supabase
+              .from('user_devices')
+              .select('timezone')
+              .eq('user_id', userId)
+              .eq('device_id', deviceData.deviceId)
+              .single();
+            
+            console.log(`[Device Registration] Registered new device for user ${userId}, stored timezone: ${insertedDevice?.timezone || 'NULL'}`);
+          }
+        }
       }
 
       return { success: true };
