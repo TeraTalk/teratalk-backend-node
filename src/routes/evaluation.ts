@@ -59,9 +59,17 @@ router.post(
   (req, res, next) => {
     uploadAudio(req, res, (err) => {
       if (err) {
+        console.log('[Evaluation] File upload error:', err.message);
         return res.status(400).json({
           error: 'File upload error',
           message: err.message,
+        });
+      }
+      if (req.file) {
+        console.log('[Evaluation] Audio file uploaded:', {
+          filename: req.file.originalname,
+          size: req.file.size,
+          mimetype: req.file.mimetype,
         });
       }
       next();
@@ -69,6 +77,8 @@ router.post(
   },
   async (req: Request, res: Response) => {
     try {
+      console.log('[Evaluation] Analyze request received');
+      
       // Extract request data
       const word = req.body.word as string;
       const audioFile = req.file;
@@ -84,22 +94,35 @@ router.post(
 
       // Validate required fields
       if (!word || typeof word !== 'string' || word.trim().length === 0) {
+        console.log('[Evaluation] Validation failed: word missing or invalid');
         res.status(400).json({
           error: 'Word is required and must be a non-empty string',
         });
         return;
       }
 
+      console.log('[Evaluation] Request validated:', {
+        word,
+        hasAudio: !!audioFile,
+        audioSize: audioFile?.size,
+        userId: userId || 'none',
+      });
+
       // Audio file is optional for testing, but recommended
       if (!audioFile) {
-        console.warn('No audio file provided, using mock analysis only');
+        console.log('[Evaluation] No audio file provided, using mock analysis');
       }
 
       // Extract expected sound
       const expectedSound = extractExpectedSound(word);
 
       // Get AI analysis
+      console.log('[Evaluation] Calling AIService.analyzeSpeech');
       const aiResponse = await AIService.analyzeSpeech(word, audioFile);
+      console.log('[Evaluation] AIService returned:', {
+        score: aiResponse.score,
+        confidence: aiResponse.confidence,
+      });
 
       // Build personalization context
       const context = await PersonalizationService.buildContext(
@@ -118,9 +141,14 @@ router.post(
         context
       );
 
+      console.log('[Evaluation] Sending response:', {
+        score: personalizedResponse.score,
+        confidence: personalizedResponse.confidence,
+      });
+
       res.json(personalizedResponse);
     } catch (error) {
-      console.error('Evaluation analyze error:', error);
+      console.error('[Evaluation] Error:', error);
       res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
