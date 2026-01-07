@@ -175,7 +175,7 @@ teratalk-backend-node/
 └── README.md
 ```
 
-## 🔌 API Endpoints
+## API Endpoints
 
 ### Authentication
 
@@ -250,7 +250,7 @@ npm run type-check
 npm run lint
 ```
 
-## 🗄 Database Setup
+## Database Setup
 
 This project uses Supabase (PostgreSQL) as the database.
 
@@ -309,7 +309,7 @@ The SODA model provides:
 
 The backend can integrate with the SODA model by making HTTP requests to the Flask service endpoint `/analyze` with audio files and expected text.
 
-## 📝 Notes
+## Notes
 
 - The AI service currently uses mock analysis for speech evaluation. Replace with actual AI service integration as needed.
 - Notification scheduler runs every 5 minutes to check for scheduled notifications.
