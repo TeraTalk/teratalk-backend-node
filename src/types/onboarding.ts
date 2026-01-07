@@ -16,6 +16,7 @@ export interface UserProfile {
   childName: string;
   speechLevel: string;
   initialDifficulty: DifficultyLevel;
+  currentGameLevel?: number; // 1-5, optional for backward compatibility
   problemSounds: string[];
   caregiverSchedule: Record<string, string[]>;
 }
@@ -34,6 +35,7 @@ export interface DatabaseUserProfile {
   child_age: number;
   speech_level: string;
   initial_difficulty: string;
+  current_game_level?: number; // 1-5, optional for backward compatibility
   problem_sounds: string[];
   caregiver_schedule: Record<string, string[]>;
   created_at: string;

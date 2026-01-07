@@ -41,11 +41,22 @@ router.get('/check', authenticate, async (req: Request, res: Response) => {
     }
 
     // Profile exists
+    // Map initial_difficulty to game level if current_game_level is not set
+    let gameLevel = profile.current_game_level;
+    if (!gameLevel) {
+      const difficulty = profile.initial_difficulty.toLowerCase();
+      if (difficulty === 'beginner') gameLevel = 1;
+      else if (difficulty === 'intermediate') gameLevel = 3;
+      else if (difficulty === 'advanced') gameLevel = 5;
+      else gameLevel = 1; // Default fallback
+    }
+
     const userProfile: UserProfile = {
       userId: profile.user_id,
       childName: profile.child_name || '',
       speechLevel: profile.speech_level,
       initialDifficulty: profile.initial_difficulty as DifficultyLevel,
+      currentGameLevel: gameLevel,
       problemSounds: profile.problem_sounds,
       caregiverSchedule: profile.caregiver_schedule,
     };
@@ -67,10 +78,10 @@ function validateProfileUpdateRequest(
   body: any
 ): { valid: boolean; error?: string } {
   // At least one field must be provided
-  if (!body.childName && !body.problemSounds && !body.caregiverSchedule) {
+  if (!body.childName && !body.problemSounds && !body.caregiverSchedule && body.currentGameLevel === undefined) {
     return {
       valid: false,
-      error: 'At least one field (childName, problemSounds, or caregiverSchedule) must be provided',
+      error: 'At least one field (childName, problemSounds, caregiverSchedule, or currentGameLevel) must be provided',
     };
   }
 
@@ -118,6 +129,22 @@ function validateProfileUpdateRequest(
       return {
         valid: false,
         error: 'At least one schedule time must be selected',
+      };
+    }
+  }
+
+  // Validate currentGameLevel if provided
+  if (body.currentGameLevel !== undefined) {
+    if (typeof body.currentGameLevel !== 'number') {
+      return {
+        valid: false,
+        error: 'currentGameLevel must be a number',
+      };
+    }
+    if (body.currentGameLevel < 1 || body.currentGameLevel > 5) {
+      return {
+        valid: false,
+        error: 'currentGameLevel must be between 1 and 5',
       };
     }
   }
@@ -170,6 +197,9 @@ router.put('/', authenticate, async (req: Request, res: Response) => {
     if (req.body.caregiverSchedule !== undefined) {
       updateData.caregiver_schedule = req.body.caregiverSchedule;
     }
+    if (req.body.currentGameLevel !== undefined) {
+      updateData.current_game_level = req.body.currentGameLevel;
+    }
 
     // Update profile in Supabase
     const { data: updatedProfile, error: updateError } = await supabase
@@ -185,12 +215,23 @@ router.put('/', authenticate, async (req: Request, res: Response) => {
       return;
     }
 
+    // Map initial_difficulty to game level if current_game_level is not set
+    let gameLevel = updatedProfile.current_game_level;
+    if (!gameLevel) {
+      const difficulty = updatedProfile.initial_difficulty.toLowerCase();
+      if (difficulty === 'beginner') gameLevel = 1;
+      else if (difficulty === 'intermediate') gameLevel = 3;
+      else if (difficulty === 'advanced') gameLevel = 5;
+      else gameLevel = 1; // Default fallback
+    }
+
     // Return updated user profile
     const userProfile: UserProfile = {
       userId: updatedProfile.user_id,
       childName: updatedProfile.child_name || '',
       speechLevel: updatedProfile.speech_level,
       initialDifficulty: updatedProfile.initial_difficulty as DifficultyLevel,
+      currentGameLevel: gameLevel,
       problemSounds: updatedProfile.problem_sounds,
       caregiverSchedule: updatedProfile.caregiver_schedule,
     };

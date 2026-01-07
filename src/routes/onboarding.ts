@@ -41,6 +41,20 @@ function assignDifficulty(
   }
 }
 
+/// Map difficulty level to game level (1-5)
+function mapDifficultyToGameLevel(difficulty: DifficultyLevel): number {
+  switch (difficulty.toLowerCase()) {
+    case 'beginner':
+      return 1;
+    case 'intermediate':
+      return 3;
+    case 'advanced':
+      return 5;
+    default:
+      return 1; // Default fallback
+  }
+}
+
 /// Validate onboarding request
 function validateOnboardingRequest(
   body: any
@@ -159,6 +173,9 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       onboardingData.speechLevel
     );
 
+    // Map difficulty to initial game level
+    const initialGameLevel = mapDifficultyToGameLevel(difficulty);
+
     // Create user profile in Supabase
     const { data: profile, error: insertError } = await supabase
       .from('user_profiles')
@@ -168,6 +185,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         child_age: onboardingData.childAge,
         speech_level: onboardingData.speechLevel.toLowerCase(),
         initial_difficulty: difficulty,
+        current_game_level: initialGameLevel,
         problem_sounds: onboardingData.problemSounds,
         caregiver_schedule: onboardingData.caregiverSchedule,
       })
@@ -194,6 +212,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       childName: onboardingData.childName.trim(),
       speechLevel: onboardingData.speechLevel,
       initialDifficulty: difficulty,
+      currentGameLevel: initialGameLevel,
       problemSounds: onboardingData.problemSounds,
       caregiverSchedule: onboardingData.caregiverSchedule,
     };
