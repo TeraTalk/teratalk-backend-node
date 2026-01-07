@@ -2,7 +2,7 @@
 
 A Node.js TypeScript Express backend API for Teratalk, a speech therapy application designed to help children improve their pronunciation through interactive games and personalized practice sessions.
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Features](#features)
 - [Tech Stack](#tech-stack)
@@ -16,7 +16,7 @@ A Node.js TypeScript Express backend API for Teratalk, a speech therapy applicat
 - [Services Integration](#services-integration)
 - [SODA Model Integration](#soda-model-integration)
 
-## ✨ Features
+## Features
 
 - **Authentication & Authorization**
   - User registration and login
@@ -61,7 +61,7 @@ A Node.js TypeScript Express backend API for Teratalk, a speech therapy applicat
   - Enable/disable notifications
   - Multiple notification time slots per day
 
-## 🛠 Tech Stack
+## Tech Stack
 
 - **Runtime**: Node.js
 - **Framework**: Express.js
@@ -73,7 +73,7 @@ A Node.js TypeScript Express backend API for Teratalk, a speech therapy applicat
 - **Scheduling**: node-cron
 - **Date Handling**: date-fns, date-fns-tz
 
-## 📦 Prerequisites
+## Prerequisites
 
 - Node.js (v18 or higher)
 - npm or yarn
@@ -81,7 +81,7 @@ A Node.js TypeScript Express backend API for Teratalk, a speech therapy applicat
 - Firebase project with FCM enabled
 - Python 3.x (for SODA model integration)
 
-## 🚀 Installation
+## Installation
 
 1. Clone the repository:
 ```bash
@@ -101,7 +101,7 @@ npm install
 npm run build
 ```
 
-## 🔐 Environment Variables
+## Environment Variables
 
 Create a `.env` file in the root directory with the following variables:
 
@@ -134,7 +134,7 @@ You can configure Firebase in two ways:
    - Set `FIREBASE_PROJECT_ID`, `FIREBASE_PRIVATE_KEY`, and `FIREBASE_CLIENT_EMAIL` in your `.env` file
    - Note: `FIREBASE_PRIVATE_KEY` should include `\n` characters for newlines
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 teratalk-backend-node/
@@ -218,7 +218,7 @@ teratalk-backend-node/
 - `GET /` - Welcome message
 - `GET /health` - Health check endpoint
 
-## 🏃 Running the Project
+## Running the Project
 
 ### Development Mode
 
@@ -262,7 +262,7 @@ This project uses Supabase (PostgreSQL) as the database.
    - Go to Authentication > Settings > JWT Settings
    - Set JWT expiration to 30 days (2592000 seconds) for better user experience
 
-## 🔗 Services Integration
+## Services Integration
 
 ### Supabase
 
@@ -277,7 +277,7 @@ This project uses Supabase (PostgreSQL) as the database.
 - Supports Android, iOS, and Web platforms
 - Timezone-aware notification delivery
 
-## 🤖 SODA Model Integration
+## SODA Model Integration
 
 The project includes a Python Flask service for pronunciation analysis:
 
@@ -316,7 +316,7 @@ The backend can integrate with the SODA model by making HTTP requests to the Fla
 - All authenticated routes require a valid JWT token in the `Authorization` header: `Bearer <token>`
 - File uploads are limited by Multer configuration (check `src/middleware/upload.ts`)
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch
@@ -324,11 +324,11 @@ The backend can integrate with the SODA model by making HTTP requests to the Fla
 4. Run tests and linting
 5. Submit a pull request
 
-## 📄 License
+## License
 
 ISC
 
-## 👥 Authors
+## Authors
 
 Teratalk Development Team
 
