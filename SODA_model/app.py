@@ -214,15 +214,56 @@ PHONEMES = list(exercise_bank.keys())
 
 @app.route("/analyze", methods=["POST"])
 def analyze():
-    if "audio" not in request.files:
-        return jsonify({"error": "audio file required"}), 400
 
+    # ----------------------------------
+    # VALIDATIONS (AS REQUESTED)
+    # ----------------------------------
+
+    # 1. Validate request format
+    if not request.content_type or "multipart/form-data" not in request.content_type:
+        return jsonify({
+            "error": "Invalid request format. multipart/form-data required"
+        }), 400
+
+    audio = request.files.get("audio")
     expected = request.form.get("expected_text")
-    if not expected:
-        return jsonify({"error": "expected_text required"}), 400
 
+    # 2. Neither audio nor expected_text sent
+    if audio is None and expected is None:
+        return jsonify({
+            "error": "Both audio file and expected_text are required"
+        }), 400
+
+    # 3. Audio missing
+    if audio is None:
+        return jsonify({
+            "error": "Audio file is required"
+        }), 400
+
+    # 4. Expected text missing
+    if expected is None:
+        return jsonify({
+            "error": "expected_text is required"
+        }), 400
+
+    # 5. Empty audio file
+    if audio.filename == "":
+        return jsonify({
+            "error": "Audio file is empty"
+        }), 400
+
+    # 6. Empty expected text
+    expected = expected.strip()
+    if expected == "":
+        return jsonify({
+            "error": "expected_text cannot be empty"
+        }), 400
+
+    # ----------------------------------
+    # PROCESSING
+    # ----------------------------------
     audio_path = "/tmp/audio.wav"
-    request.files["audio"].save(audio_path)
+    audio.save(audio_path)
 
     predicted, error_type, severity = analyze_pronunciation(
         audio_path, expected.lower()
@@ -230,12 +271,10 @@ def analyze():
 
     is_correct = error_type == "Correct"
 
-    # Default values
     base_phoneme = None
     target_phoneme = None
     phoneme_pos = None
 
-    # Only analyze phonemes if incorrect
     if not is_correct:
         base_phoneme = get_mismatched_phoneme(
             expected.lower(),
@@ -247,7 +286,8 @@ def analyze():
             target_phoneme = build_cv(expected.lower(), base_phoneme)
             phoneme_pos = phoneme_position(expected.lower(), base_phoneme)
 
-    os.remove(audio_path)
+    if os.path.exists(audio_path):
+        os.remove(audio_path)
 
     return jsonify({
         "expected": expected,
