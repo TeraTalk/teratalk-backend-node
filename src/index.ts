@@ -11,6 +11,7 @@ import profileRoutes from './routes/profile';
 import notificationRoutes from './routes/notifications';
 import notificationPreferencesRoutes from './routes/notification_preferences';
 import evaluationRoutes from './routes/evaluation';
+import therapyRoutes from './routes/therapy';
 import { startNotificationScheduler } from './services/notification_scheduler';
 
 const app = express();
@@ -48,6 +49,9 @@ app.use('/api/notification-preferences', notificationPreferencesRoutes);
 // Evaluation routes
 app.use('/api/evaluation', evaluationRoutes);
 
+// Therapy routes
+app.use('/api/therapy', therapyRoutes);
+
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);
@@ -66,4 +70,3 @@ app.listen(PORT, () => {
     console.error('Failed to start notification scheduler:', error);
   }
 });
-
