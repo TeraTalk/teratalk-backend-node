@@ -5,3 +5,5 @@ flask
 gunicorn
 soundfile
 torchcodec
+numpy
+g2p_en

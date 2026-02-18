@@ -1,22 +1,43 @@
 {
-  "p": {"cv":["pa","pe","pi","po","pu"]},
-  "b": {"cv":["ba","be","bi","bo","bu"]},
-  "t": {"cv":["ta","te","ti","to","tu"]},
-  "d": {"cv":["da","de","di","do","du"]},
-  "k": {"cv":["ka","ke","ki","ko","ku"]},
-  "g": {"cv":["ga","ge","gi","go","gu"]},
-  "m": {"cv":["ma","me","mi","mo","mu"]},
-  "n": {"cv":["na","ne","ni","no","nu"]},
-  "ng": {"cv":["nga","nge","ngi","ngo","ngu"]},
-  "f": {"cv":["fa","fe","fi","fo","fu"]},
-  "s": {"cv":["sa","se","si","so","su"]},
-  "sh": {"cv":["sha","she","shi","sho","shu"]},
-  "ch": {"cv":["cha","che","chi","cho","chu"]},
-  "l": {"cv":["la","le","li","lo","lu"]},
-  "r": {"cv":["ra","re","ri","ro","ru"]},
-  "w": {"cv":["wa","we","wi","wo","wu"]},
-  "y": {"cv":["ya","ye","yi","yo","yu"]},
-  "h": {"cv":["ha","he","hi","ho","hu"]},
-  "th": {"cv":["tha","the","thi","tho","thu"]},
-  "dh": {"cv":["dha","dhe","dhi","dho","dhu"]}
+"p": {"cv":["pa","pe","pi","po","pu"], "vc":["ap","ep","ip","op","up"], "cvc":["pap","pep","pip","pop","pup"]},
+"b": {"cv":["ba","be","bi","bo","bu"], "vc":["ab","eb","ib","ob","ub"], "cvc":["bab","beb","bib","bob","bub"]},
+"t": {"cv":["ta","te","ti","to","tu"], "vc":["at","et","it","ot","ut"], "cvc":["tat","tet","tit","tot","tut"]},
+"d": {"cv":["da","de","di","do","du"], "vc":["ad","ed","id","od","ud"], "cvc":["dad","ded","did","dod","dud"]},
+"k": {"cv":["ka","ke","ki","ko","ku"], "vc":["ak","ek","ik","ok","uk"], "cvc":["kak","kek","kik","kok","kuk"]},
+"g": {"cv":["ga","ge","gi","go","gu"], "vc":["ag","eg","ig","og","ug"], "cvc":["gag","geg","gig","gog","gug"]},
+
+"m": {"cv":["ma","me","mi","mo","mu"], "vc":["am","em","im","om","um"], "cvc":["mam","mem","mim","mom","mum"]},
+"n": {"cv":["na","ne","ni","no","nu"], "vc":["an","en","in","on","un"], "cvc":["nan","nen","nin","non","nun"]},
+"ng": {"cv":["nga","nge","ngi","ngo","ngu"], "vc":["ang","eng","ing","ong","ung"], "cvc":["ngang","ngeng","nging","ngong","ngung"]},
+
+"f": {"cv":["fa","fe","fi","fo","fu"], "vc":["af","ef","if","of","uf"], "cvc":["faf","fef","fif","fof","fuf"]},
+"v": {"cv":["va","ve","vi","vo","vu"], "vc":["av","ev","iv","ov","uv"], "cvc":["vav","vev","viv","vov","vuv"]},
+"s": {"cv":["sa","se","si","so","su"], "vc":["as","es","is","os","us"], "cvc":["sas","ses","sis","sos","sus"]},
+"z": {"cv":["za","ze","zi","zo","zu"], "vc":["az","ez","iz","oz","uz"], "cvc":["zaz","zez","ziz","zoz","zuz"]},
+"sh": {"cv":["sha","she","shi","sho","shu"], "vc":["ash","esh","ish","osh","ush"], "cvc":["shash","shesh","shish","shosh","shush"]},
+"zh": {"cv":["zha","zhe","zhi","zho","zhu"], "vc":["azh","ezh","izh","ozh","uzh"], "cvc":["zhazh","zhezh","zhizh","zhozh","zhuzh"]},
+
+"ch": {"cv":["cha","che","chi","cho","chu"], "vc":["ach","ech","ich","och","uch"], "cvc":["chach","chech","chich","choch","chuch"]},
+"j": {"cv":["ja","je","ji","jo","ju"], "vc":["aj","ej","ij","oj","uj"], "cvc":["jaj","jej","jij","joj","juj"]},
+
+"l": {"cv":["la","le","li","lo","lu"], "vc":["al","el","il","ol","ul"], "cvc":["lal","lel","lil","lol","lul"]},
+"r": {"cv":["ra","re","ri","ro","ru"], "vc":["ar","er","ir","or","ur"], "cvc":["rar","rer","rir","ror","rur"]},
+
+"w": {"cv":["wa","we","wi","wo","wu"], "vc":["aw","ew","iw","ow","uw"], "cvc":["waw","wew","wiw","wow","wuw"]},
+"y": {"cv":["ya","ye","yi","yo","yu"], "vc":["ay","ey","iy","oy","uy"], "cvc":["yay","yey","yiy","yoy","yuy"]},
+"h": {"cv":["ha","he","hi","ho","hu"], "vc":["ah","eh","ih","oh","uh"], "cvc":["hah","heh","hih","hoh","huh"]},
+
+"th": {"cv":["tha","the","thi","tho","thu"], "vc":["ath","eth","ith","oth","uth"], "cvc":["thath","theth","thith","thoth","thuth"]},
+"dh": {"cv":["dha","dhe","dhi","dho","dhu"], "vc":["adh","edh","idh","odh","udh"], "cvc":["dhadh","dhedh","dhidh","dhodh","dhudh"]},
+
+"a": {"vowel":["a","aa","ah"]},
+"e": {"vowel":["e","ee","eh"]},
+"i": {"vowel":["i","ee","ih"]},
+"o": {"vowel":["o","oo","oh"]},
+"u": {"vowel":["u","uh","oo"]},
+
+"ai": {"diphthong":["ai","ay"]},
+"oi": {"diphthong":["oi","oy"]},
+"au": {"diphthong":["au","aw"]},
+"ou": {"diphthong":["ou","ow"]}
 }
