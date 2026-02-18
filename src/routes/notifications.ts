@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { NotificationService } from '../services/notification_service';
 import { RegisterDeviceRequest } from '../types/notifications';
+import { supabase } from '../config/supabase';
 
 const router = Router();
 const notificationService = new NotificationService();
@@ -117,6 +118,92 @@ router.post('/test', authenticate, async (req: Request, res: Response) => {
     }
   } catch (error) {
     console.error('Test notification error:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+/// POST /api/notifications/demo - Send demo notification with time context
+router.post('/demo', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'User ID not found' });
+      return;
+    }
+
+    const { time } = req.body;
+
+    // Validate time parameter
+    const validTimes = ['Morning', 'Afternoon', 'Evening', 'Dinner'];
+    if (!time || !validTimes.includes(time)) {
+      res.status(400).json({
+        error: 'Invalid time parameter',
+        message: `Time must be one of: ${validTimes.join(', ')}`,
+      });
+      return;
+    }
+
+    // Fetch user's problem sounds from profile
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .select('problem_sounds')
+      .eq('user_id', userId)
+      .single();
+
+    let problemSounds: string[] = [];
+    if (!profileError && profile && profile.problem_sounds) {
+      problemSounds = profile.problem_sounds;
+    }
+
+    // If user has problem sounds, send contextual notification
+    if (problemSounds.length > 0) {
+      const result = await notificationService.sendContextualNotification(
+        userId,
+        time as 'Morning' | 'Afternoon' | 'Evening' | 'Dinner',
+        problemSounds
+      );
+
+      if (result.success) {
+        res.status(200).json({
+          success: true,
+          message: `Demo notification sent for ${time}`,
+        });
+      } else {
+        res.status(500).json({
+          error: result.error || 'Failed to send demo notification',
+        });
+      }
+    } else {
+      // Fallback to simple notification if no problem sounds
+      const timeMessages: Record<string, string> = {
+        Morning: 'Good morning! Time for some speech practice! 🌅',
+        Afternoon: 'Good afternoon! Let\'s practice together! ☀️',
+        Evening: 'Good evening! Ready for some practice? 🌆',
+        Dinner: 'Dinner time! Let\'s practice while we eat! 🍽️',
+      };
+
+      const result = await notificationService.sendNotification(userId, {
+        title: 'Practice Time! 🎯',
+        body: timeMessages[time] || 'Time for speech practice!',
+        data: {
+          type: 'demo',
+          time: time,
+        },
+      });
+
+      if (result.success) {
+        res.status(200).json({
+          success: true,
+          message: `Demo notification sent for ${time}`,
+        });
+      } else {
+        res.status(500).json({
+          error: result.error || 'Failed to send demo notification',
+        });
+      }
+    }
+  } catch (error) {
+    console.error('Demo notification error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
