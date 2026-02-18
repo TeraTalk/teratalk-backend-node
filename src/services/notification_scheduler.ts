@@ -8,7 +8,8 @@ const notificationService = new NotificationService();
 
 /// Determine time context based on current hour
 /// Extended to support 24-hour range for notifications
-function getTimeContext(hour: number): 'Morning' | 'Afternoon' | 'Evening' | 'Dinner' | 'Night' | null {
+type TimeContext = 'Morning' | 'Afternoon' | 'Evening' | 'Dinner' | 'Night' | null;
+function getTimeContext(hour: number): TimeContext {
   if (hour >= 6 && hour < 12) {
     return 'Morning';
   } else if (hour >= 12 && hour < 17) {
@@ -30,7 +31,7 @@ function getTimeContext(hour: number): 'Morning' | 'Afternoon' | 'Evening' | 'Di
 function matchesNotificationTime(
   currentHour: number,
   currentMinute: number,
-  timeContext: 'Morning' | 'Afternoon' | 'Evening' | 'Dinner' | null,
+  timeContext: TimeContext,
   notificationTime: NotificationTime
 ): boolean {
   // Check if notification is enabled
@@ -58,7 +59,7 @@ function matchesNotificationTime(
 function matchesNotificationTimeWithLogging(
   currentHour: number,
   currentMinute: number,
-  timeContext: 'Morning' | 'Afternoon' | 'Evening' | 'Dinner' | null,
+  timeContext: TimeContext,
   notificationTime: NotificationTime
 ): { matches: boolean; reason?: string } {
   if (!notificationTime.enabled) {
@@ -240,6 +241,11 @@ async function processNotifications(): Promise<void> {
         skippedCount++;
         continue;
       }
+      if (!matchedNotificationTime) {
+        console.log(`[User ${userId}] ⏭️ SKIPPED: No matched notification time was recorded`);
+        skippedCount++;
+        continue;
+      }
 
       // Send contextual notification
       // Use the notification time's context, not the current time context
@@ -324,4 +330,3 @@ export function stopNotificationScheduler(): void {
   // This would need to be implemented if needed
   console.log('Notification scheduler stop requested');
 }
-
