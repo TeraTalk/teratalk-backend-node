@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
-  res.json({ message: 'Welcome to Teratalk Backend API' });
+  res.json({ message: 'Welcome to Teratalk Backend API Azure' });
 });
 
 app.get('/health', (req: Request, res: Response) => {
