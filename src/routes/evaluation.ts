@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { uploadAudio } from '../middleware/upload';
 import { authenticate } from '../middleware/auth';
-import { AIService } from '../services/ai_service';
+import { SodaService } from '../services/soda_service';
 import { PersonalizationService } from '../services/personalization_service';
 import {
   EvaluationAnalyzeRequest,
@@ -18,6 +18,39 @@ const router = Router();
 /// In-memory session storage (for demo purposes)
 /// In production, this would be stored in a database
 const sessions = new Map<string, EvaluationSession>();
+
+function toSodaResponse(sodaResponse: Record<string, any>) {
+  const severityRaw = sodaResponse.severity;
+  const severity =
+    typeof severityRaw === 'number'
+      ? severityRaw
+      : typeof severityRaw === 'string'
+      ? parseFloat(severityRaw)
+      : NaN;
+  const safeSeverity = Number.isFinite(severity)
+    ? Math.max(0, Math.min(1, severity))
+    : 0.5;
+
+  const confidence = Math.max(0, Math.min(1, 1 - safeSeverity));
+  const score = Math.round(confidence * 100);
+
+  const detectedSounds = [
+    sodaResponse.base_phoneme,
+    sodaResponse.target_phoneme,
+  ].filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+
+  return {
+    score,
+    confidence,
+    detectedSounds: detectedSounds.length > 0 ? detectedSounds : ['UNKNOWN'],
+    pronunciationFeedback:
+      typeof sodaResponse.error_type === 'string'
+        ? `Pronunciation result: ${sodaResponse.error_type}`
+        : 'Pronunciation analysis complete.',
+    phonemes: detectedSounds,
+    accuracy: confidence,
+  };
+}
 
 /// Extract expected sound from word (helper function)
 function extractExpectedSound(word: string): string {
@@ -69,8 +102,12 @@ router.post(
   },
   async (req: Request, res: Response) => {
     try {
+      const requestId = `eval_analyze_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
       // Extract request data
-      const word = req.body.word as string;
+      const wordFromBody = req.body.word as string | undefined;
+      const expectedTextFromBody = req.body.expected_text as string | undefined;
+      const expectedText = (expectedTextFromBody || wordFromBody || '').trim();
       const audioFile = req.file;
       const userId = req.body.userId as string | undefined;
       const age = req.body.age ? parseInt(req.body.age as string) : undefined;
@@ -82,45 +119,60 @@ router.post(
         : undefined;
       const speechLevel = req.body.speechLevel as string | undefined;
 
+      console.log('[Evaluation][Analyze] Request received', {
+        requestId,
+        hasWord: Boolean(wordFromBody),
+        hasExpectedText: Boolean(expectedTextFromBody),
+        expectedTextLength: expectedText.length,
+        hasAudio: Boolean(audioFile),
+        audio: audioFile
+          ? {
+              originalname: audioFile.originalname,
+              mimetype: audioFile.mimetype,
+              size: audioFile.size,
+            }
+          : null,
+        userId: userId || null,
+        age: age ?? null,
+        difficulty: difficulty || null,
+        speechLevel: speechLevel || null,
+      });
+
       // Validate required fields
-      if (!word || typeof word !== 'string' || word.trim().length === 0) {
+      if (!expectedText) {
         res.status(400).json({
-          error: 'Word is required and must be a non-empty string',
+          error: 'expected_text or word is required and must be a non-empty string',
         });
         return;
       }
 
-      // Audio file is optional for testing, but recommended
       if (!audioFile) {
-        console.warn('No audio file provided, using mock analysis only');
+        res.status(400).json({
+          error: 'Audio file is required',
+        });
+        return;
       }
 
-      // Extract expected sound
-      const expectedSound = extractExpectedSound(word);
-
-      // Get AI analysis
-      const aiResponse = await AIService.analyzeSpeech(word, audioFile);
-
-      // Build personalization context
-      const context = await PersonalizationService.buildContext(
-        userId,
-        age,
-        speechLevel,
-        difficulty,
-        problemSounds
-      );
-
-      // Apply personalization
-      const personalizedResponse = await PersonalizationService.personalizeResponse(
-        aiResponse,
-        word,
-        expectedSound,
-        context
-      );
-
-      res.json(personalizedResponse);
+      console.log('[Evaluation][Analyze] Forwarding to SODA', {
+        requestId,
+        expectedText,
+        endpointHint: process.env.SODA_ANALYZE_URL || 'default',
+      });
+      const sodaResponse = await SodaService.analyzeSpeech(expectedText, audioFile);
+      console.log('[Evaluation][Analyze] SODA response received', {
+        requestId,
+        keys: Object.keys(sodaResponse),
+        predicted: sodaResponse.predicted ?? null,
+        severity: sodaResponse.severity ?? null,
+        error_type: sodaResponse.error_type ?? null,
+        therapy_level: sodaResponse.therapy_level ?? null,
+      });
+      res.json(sodaResponse);
     } catch (error) {
-      console.error('Evaluation analyze error:', error);
+      console.error('[Evaluation][Analyze] Error', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({
         error: 'Internal server error',
         message: error instanceof Error ? error.message : 'Unknown error',
@@ -181,6 +233,7 @@ router.post(
   },
   async (req: Request, res: Response) => {
     try {
+      const requestId = `eval_submit_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const sessionId = req.params.sessionId;
       const userId = req.userId;
 
@@ -198,7 +251,9 @@ router.post(
       }
 
       // Extract request data
-      const word = req.body.word as string;
+      const wordFromBody = req.body.word as string | undefined;
+      const expectedTextFromBody = req.body.expected_text as string | undefined;
+      const word = (wordFromBody || expectedTextFromBody || '').trim();
       const audioFile = req.file;
       const age = req.body.age ? parseInt(req.body.age as string) : undefined;
       const difficulty = req.body.difficulty as string | undefined;
@@ -208,6 +263,24 @@ router.post(
             : [req.body.problemSounds])
         : undefined;
       const speechLevel = req.body.speechLevel as string | undefined;
+
+      console.log('[Evaluation][SessionSubmit] Request received', {
+        requestId,
+        sessionId,
+        userId: userId || null,
+        word,
+        hasAudio: Boolean(audioFile),
+        audio: audioFile
+          ? {
+              originalname: audioFile.originalname,
+              mimetype: audioFile.mimetype,
+              size: audioFile.size,
+            }
+          : null,
+        age: age ?? null,
+        difficulty: difficulty || null,
+        speechLevel: speechLevel || null,
+      });
 
       // Validate required fields
       if (!word || typeof word !== 'string' || word.trim().length === 0) {
@@ -220,8 +293,16 @@ router.post(
       // Extract expected sound
       const expectedSound = extractExpectedSound(word);
 
-      // Get AI analysis
-      const aiResponse = await AIService.analyzeSpeech(word, audioFile);
+      // Get SODA analysis
+      const sodaResponse = await SodaService.analyzeSpeech(word, audioFile);
+      const aiResponse = toSodaResponse(sodaResponse);
+      console.log('[Evaluation][SessionSubmit] SODA response mapped', {
+        requestId,
+        sessionId,
+        score: aiResponse.score,
+        confidence: aiResponse.confidence,
+        detectedSounds: aiResponse.detectedSounds,
+      });
 
       // Build personalization context
       const context = await PersonalizationService.buildContext(
@@ -266,8 +347,17 @@ router.post(
         submissionId: submission.timestamp,
         sessionId,
       });
+      console.log('[Evaluation][SessionSubmit] Submission saved', {
+        requestId,
+        sessionId,
+        submissionTimestamp: submission.timestamp,
+        score: personalizedResponse.score,
+      });
     } catch (error) {
-      console.error('Session submit error:', error);
+      console.error('[Evaluation][SessionSubmit] Error', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
       res.status(500).json({ error: 'Internal server error' });
     }
   }
