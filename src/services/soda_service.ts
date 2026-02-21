@@ -1,6 +1,44 @@
 /// SODA service proxy for pronunciation analysis.
 /// Forwards audio + expected_text to the external analyzer endpoint.
 export class SodaService {
+  private static toNumber(value: unknown): number | null {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === 'string') {
+      const parsed = parseFloat(value);
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return null;
+  }
+
+  private static normalizeSeverity(payload: Record<string, any>): Record<string, any> {
+    const existingSeverity = this.toNumber(payload.severity);
+    const severityText = this.toNumber(payload.severity_text);
+    const severityPhoneme = this.toNumber(payload.severity_phoneme);
+
+    let normalizedSeverity = existingSeverity;
+    if (normalizedSeverity === null) {
+      if (severityText !== null) {
+        normalizedSeverity = severityText;
+      } else if (severityPhoneme !== null) {
+        normalizedSeverity = severityPhoneme;
+      } else if (payload.is_correct === true) {
+        // Preserve old frontend contract for clearly correct utterances.
+        normalizedSeverity = 0;
+      }
+    }
+
+    if (normalizedSeverity === null) {
+      return payload;
+    }
+
+    return {
+      ...payload,
+      severity: Math.max(0, Math.min(1, normalizedSeverity)),
+    };
+  }
+
   static async analyzeSpeech(
     expectedText: string,
     audioFile?: Express.Multer.File
@@ -75,6 +113,7 @@ export class SodaService {
       throw new Error(message);
     }
 
-    return parsed;
+    const normalized = this.normalizeSeverity(parsed);
+    return normalized;
   }
 }
