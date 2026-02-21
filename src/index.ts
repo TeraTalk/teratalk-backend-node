@@ -11,6 +11,7 @@ import profileRoutes from './routes/profile';
 import notificationRoutes from './routes/notifications';
 import notificationPreferencesRoutes from './routes/notification_preferences';
 import evaluationRoutes from './routes/evaluation';
+import gamesRoutes from './routes/games';
 import { startNotificationScheduler } from './services/notification_scheduler';
 
 const app = express();
@@ -47,6 +48,9 @@ app.use('/api/notification-preferences', notificationPreferencesRoutes);
 
 // Evaluation routes
 app.use('/api/evaluation', evaluationRoutes);
+
+// Game routes
+app.use('/api/games', gamesRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {

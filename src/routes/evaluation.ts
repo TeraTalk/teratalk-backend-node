@@ -3,6 +3,7 @@ import { uploadAudio } from '../middleware/upload';
 import { authenticate } from '../middleware/auth';
 import { SodaService } from '../services/soda_service';
 import { PersonalizationService } from '../services/personalization_service';
+import { supabase } from '../config/supabase';
 import {
   EvaluationAnalyzeRequest,
   EvaluationResponse,
@@ -18,6 +19,270 @@ const router = Router();
 /// In-memory session storage (for demo purposes)
 /// In production, this would be stored in a database
 const sessions = new Map<string, EvaluationSession>();
+const MIN_GAME_LEVEL = 2;
+const MAX_GAME_LEVEL = 5;
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function clampGameLevel(level: number): number {
+  return Math.max(MIN_GAME_LEVEL, Math.min(MAX_GAME_LEVEL, Math.round(level)));
+}
+
+function parseLevel(value: unknown): number | null {
+  const parsed = toNumber(value);
+  if (parsed === null) return null;
+  return clampGameLevel(parsed);
+}
+
+function difficultyToLevel(value: unknown): number | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return null;
+
+  if (normalized === 'beginner') return 2;
+  if (normalized === 'intermediate') return 3;
+  if (normalized === 'advanced') return 5;
+
+  const numeric = toNumber(normalized);
+  return numeric === null ? null : clampGameLevel(numeric);
+}
+
+function levelToDifficulty(level: number): 'beginner' | 'intermediate' | 'advanced' {
+  if (level <= 2) return 'beginner';
+  if (level <= 4) return 'intermediate';
+  return 'advanced';
+}
+
+async function getOrInitializeUserLevel(
+  userId: string,
+  requestId: string
+): Promise<number | null> {
+  try {
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('initial_difficulty')
+      .eq('user_id', userId)
+      .single();
+
+    if (error || !profile) {
+      console.warn('[Evaluation][Analyze] Unable to fetch profile for level', {
+        requestId,
+        userId,
+        error: error?.message || null,
+      });
+      return null;
+    }
+
+    const parsedLevel = difficultyToLevel(profile.initial_difficulty);
+    if (parsedLevel !== null) {
+      return parsedLevel;
+    }
+
+    const fallbackLevel = MIN_GAME_LEVEL;
+    const fallbackDifficulty = levelToDifficulty(fallbackLevel);
+    const { error: updateError } = await supabase
+      .from('user_profiles')
+      .update({ initial_difficulty: fallbackDifficulty })
+      .eq('user_id', userId);
+
+    if (updateError) {
+      console.warn('[Evaluation][Analyze] Failed to initialize missing difficulty', {
+        requestId,
+        userId,
+        fallbackDifficulty,
+        message: updateError.message,
+      });
+      return fallbackLevel;
+    }
+
+    console.log('[Evaluation][Analyze] Initialized missing user level', {
+      requestId,
+      userId,
+      fallbackLevel,
+      fallbackDifficulty,
+    });
+    return fallbackLevel;
+  } catch (error) {
+    console.warn('[Evaluation][Analyze] Unexpected level initialization error', {
+      requestId,
+      userId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return null;
+  }
+}
+
+async function persistUserLevel(
+  userId: string,
+  level: number,
+  requestId: string
+): Promise<void> {
+  const bounded = clampGameLevel(level);
+  const difficulty = levelToDifficulty(bounded);
+
+  try {
+    const { error } = await supabase
+      .from('user_profiles')
+      .update({ initial_difficulty: difficulty })
+      .eq('user_id', userId);
+
+    if (error) {
+      console.warn('[Evaluation][Analyze] Failed to persist user level', {
+        requestId,
+        userId,
+        level: bounded,
+        difficulty,
+        message: error.message,
+      });
+      return;
+    }
+
+    console.log('[Evaluation][Analyze] User level persisted', {
+      requestId,
+      userId,
+      level: bounded,
+      difficulty,
+    });
+  } catch (error) {
+    console.warn('[Evaluation][Analyze] Unexpected level persistence error', {
+      requestId,
+      userId,
+      level: bounded,
+      difficulty,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+function parseStringArray(value: unknown): string[] | undefined {
+  if (!value) return undefined;
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (typeof v === 'string' ? v.trim() : ''))
+      .filter((v) => v.length > 0);
+  }
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (!trimmed) return undefined;
+    if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((v) => (typeof v === 'string' ? v.trim() : ''))
+            .filter((v) => v.length > 0);
+        }
+      } catch {
+        // ignore JSON parse errors and fallback to comma split
+      }
+    }
+    return trimmed
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v.length > 0);
+  }
+  return undefined;
+}
+
+async function resolveOptionalUserId(req: Request): Promise<string | undefined> {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return undefined;
+  }
+
+  const token = authHeader.substring(7);
+  try {
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
+    if (error || !user) {
+      return undefined;
+    }
+    return user.id;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildGamePersonalization(
+  sodaResponse: Record<string, any>,
+  context: Awaited<ReturnType<typeof PersonalizationService.buildContext>>,
+  params: {
+    currentLevel?: number;
+    attempt?: number;
+    playerMode?: string;
+  }
+) {
+  const severity =
+    toNumber(sodaResponse.severity) ??
+    toNumber(sodaResponse.severity_text) ??
+    toNumber(sodaResponse.severity_phoneme);
+  const boundedSeverity =
+    severity === null ? null : Math.max(0, Math.min(1, severity));
+
+  const currentLevel = clampGameLevel(params.currentLevel || MIN_GAME_LEVEL);
+  const attempt = Math.max(1, Math.min(5, params.attempt || 1));
+  const playerMode = params.playerMode === 'with_guardian' ? 'with_guardian' : 'alone';
+  const therapyLevel =
+    typeof sodaResponse.therapy_level === 'string'
+      ? sodaResponse.therapy_level.toLowerCase()
+      : '';
+
+  // Conservative difficulty policy:
+  // - Do not increase difficulty automatically.
+  // - Reduce by 1 only after repeated poor attempts.
+  let nextDifficulty = currentLevel;
+  if (boundedSeverity !== null) {
+    const isPoorAttempt = boundedSeverity >= 0.65;
+    if (isPoorAttempt && attempt >= 3 && currentLevel > 2) {
+      nextDifficulty = currentLevel - 1;
+    }
+  }
+
+  const focusSounds = (
+    context.problemSounds && context.problemSounds.length > 0
+      ? context.problemSounds
+      : [sodaResponse.base_phoneme, sodaResponse.target_phoneme]
+  )
+    .filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    .map((v) => v.trim())
+    .slice(0, 3);
+
+  let hintTone: 'light' | 'supportive' | 'direct';
+  if (boundedSeverity === null || boundedSeverity <= 0.35) {
+    hintTone = 'light';
+  } else if (boundedSeverity <= 0.7) {
+    hintTone = 'supportive';
+  } else {
+    hintTone = 'direct';
+  }
+
+  const allowRetry =
+    boundedSeverity === null || (boundedSeverity <= 0.7 && attempt < 3);
+
+  const suggestGuardianAssist =
+    playerMode === 'with_guardian' &&
+    (attempt >= 2 || therapyLevel === 'high' || (boundedSeverity !== null && boundedSeverity > 0.6));
+
+  return {
+    nextDifficulty,
+    focusSounds,
+    hintTone,
+    allowRetry,
+    suggestGuardianAssist,
+    playerMode,
+  };
+}
 
 function toSodaResponse(sodaResponse: Record<string, any>) {
   const severityRaw = sodaResponse.severity;
@@ -109,15 +374,23 @@ router.post(
       const expectedTextFromBody = req.body.expected_text as string | undefined;
       const expectedText = (expectedTextFromBody || wordFromBody || '').trim();
       const audioFile = req.file;
-      const userId = req.body.userId as string | undefined;
+      const tokenUserId = await resolveOptionalUserId(req);
+      const userId = tokenUserId || (req.body.userId as string | undefined);
       const age = req.body.age ? parseInt(req.body.age as string) : undefined;
-      const difficulty = req.body.difficulty as string | undefined;
-      const problemSounds = req.body.problemSounds
-        ? (Array.isArray(req.body.problemSounds)
-            ? req.body.problemSounds
-            : [req.body.problemSounds])
-        : undefined;
+      const levelFromBody = parseLevel(req.body.level);
+      const profileLevel = userId
+        ? await getOrInitializeUserLevel(userId, requestId)
+        : null;
+      const effectiveLevel = levelFromBody ?? profileLevel ?? MIN_GAME_LEVEL;
+      const difficulty =
+        (req.body.difficulty as string | undefined) ||
+        (profileLevel !== null ? levelToDifficulty(profileLevel) : undefined);
+      const problemSounds = parseStringArray(req.body.problemSounds);
       const speechLevel = req.body.speechLevel as string | undefined;
+      const attempt = req.body.attempt ? parseInt(req.body.attempt as string) : undefined;
+      const playerModeRaw = (req.body.player_mode as string | undefined) || 'alone';
+      const playerMode = playerModeRaw === 'with_guardian' ? 'with_guardian' : 'alone';
+      const wordId = req.body.word_id as string | undefined;
 
       console.log('[Evaluation][Analyze] Request received', {
         requestId,
@@ -133,9 +406,16 @@ router.post(
             }
           : null,
         userId: userId || null,
+        tokenUserId: tokenUserId || null,
         age: age ?? null,
         difficulty: difficulty || null,
         speechLevel: speechLevel || null,
+        level: levelFromBody ?? null,
+        profileLevel: profileLevel ?? null,
+        effectiveLevel,
+        attempt: attempt ?? null,
+        player_mode: playerMode,
+        word_id: wordId || null,
       });
 
       // Validate required fields
@@ -159,6 +439,22 @@ router.post(
         endpointHint: process.env.SODA_ANALYZE_URL || 'default',
       });
       const sodaResponse = await SodaService.analyzeSpeech(expectedText, audioFile);
+      const context = await PersonalizationService.buildContext(
+        userId,
+        age,
+        speechLevel,
+        difficulty,
+        problemSounds
+      );
+      const gamePersonalization = buildGamePersonalization(sodaResponse, context, {
+        currentLevel: effectiveLevel,
+        attempt,
+        playerMode,
+      });
+      if (userId) {
+        await persistUserLevel(userId, gamePersonalization.nextDifficulty, requestId);
+      }
+
       console.log('[Evaluation][Analyze] SODA response received', {
         requestId,
         keys: Object.keys(sodaResponse),
@@ -166,8 +462,14 @@ router.post(
         severity: sodaResponse.severity ?? null,
         error_type: sodaResponse.error_type ?? null,
         therapy_level: sodaResponse.therapy_level ?? null,
+        gamePersonalization,
+        effectiveLevel,
       });
-      res.json(sodaResponse);
+      res.json({
+        ...sodaResponse,
+        gamePersonalization,
+        effectiveLevel,
+      });
     } catch (error) {
       console.error('[Evaluation][Analyze] Error', {
         message: error instanceof Error ? error.message : String(error),

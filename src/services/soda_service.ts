@@ -1,6 +1,47 @@
 /// SODA service proxy for pronunciation analysis.
 /// Forwards audio + expected_text to the external analyzer endpoint.
 export class SodaService {
+  private static normalizeExpectedText(expectedText: string): string {
+    const trimmed = expectedText.trim();
+    if (!trimmed) return expectedText;
+
+    // Apply only for single alphabet letters so existing word behavior is unchanged.
+    if (!/^[A-Za-z]$/.test(trimmed)) {
+      return expectedText;
+    }
+
+    const letterNames: Record<string, string> = {
+      A: 'ay',
+      B: 'bee',
+      C: 'cee',
+      D: 'dee',
+      E: 'ee',
+      F: 'ef',
+      G: 'jee',
+      H: 'aitch',
+      I: 'eye',
+      J: 'jay',
+      K: 'kay',
+      L: 'el',
+      M: 'em',
+      N: 'en',
+      O: 'oh',
+      P: 'pee',
+      Q: 'cue',
+      R: 'ar',
+      S: 'ess',
+      T: 'tee',
+      U: 'you',
+      V: 'vee',
+      W: 'double u',
+      X: 'ex',
+      Y: 'why',
+      Z: 'zee',
+    };
+
+    return letterNames[trimmed.toUpperCase()] || expectedText;
+  }
+
   private static toNumber(value: unknown): number | null {
     if (typeof value === 'number' && Number.isFinite(value)) {
       return value;
@@ -53,9 +94,12 @@ export class SodaService {
       throw new Error('Audio file is required for SODA analysis');
     }
 
+    const normalizedExpectedText = this.normalizeExpectedText(expectedText);
+
     console.log('[SodaService] Preparing analyze request', {
       endpoint,
       expectedText,
+      normalizedExpectedText,
       audio: {
         originalname: audioFile.originalname,
         mimetype: audioFile.mimetype,
@@ -66,7 +110,7 @@ export class SodaService {
     const form = new FormData();
     const audioBlob = new Blob([audioFile.buffer], { type: audioFile.mimetype });
     form.append('audio', audioBlob, audioFile.originalname || 'audio.m4a');
-    form.append('expected_text', expectedText);
+    form.append('expected_text', normalizedExpectedText);
 
     let response: globalThis.Response;
     try {
