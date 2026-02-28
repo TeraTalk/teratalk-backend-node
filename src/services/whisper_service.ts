@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 
 type TranscribeResult = { text: string; chunks?: Array<{ timestamp: [number, number]; text: string }> };
 
-let cachedWhisper: { transcribe: (filePath: string, language?: string) => Promise<TranscribeResult | TranscribeResult[]> } | null = null;
+let cachedWhisper: Awaited<ReturnType<typeof import('whisper-onnx-speech-to-text')['initWhisper']>> | null = null;
 
 async function getWhisper() {
   if (cachedWhisper) return cachedWhisper;
@@ -47,6 +47,7 @@ export async function transcribeAudio(
     await convertToWav16k(inputPath, wavPath);
 
     const whisper = await getWhisper();
+    if (!whisper) throw new Error('Whisper failed to initialize');
     const result = await whisper.transcribe(wavPath);
     if (result == null) return '';
 
