@@ -2,10 +2,12 @@
  * Whisper-based transcription for the voice agent.
  * Uses whisper-onnx-speech-to-text (ONNX runtime, works on Windows).
  * Converts uploaded audio to WAV 16 kHz via FFmpeg, then transcribes.
+ * Loads the ESM package via whisper-loader.mjs so the model name is never passed to import().
  */
 
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { pathToFileURL } from 'url';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 
@@ -13,16 +15,33 @@ const execFileAsync = promisify(execFile);
 
 type TranscribeResult = { text: string; chunks?: Array<{ timestamp: [number, number]; text: string }> };
 
-let cachedWhisper: Awaited<ReturnType<typeof import('whisper-onnx-speech-to-text')['initWhisper']>> | null = null;
+interface WhisperInstance {
+  transcribe: (filePath: string, language?: string) => Promise<TranscribeResult | TranscribeResult[]>;
+  disposeModel: () => Promise<void>;
+}
 
-async function getWhisper() {
+let cachedWhisper: WhisperInstance | null = null;
+
+async function getWhisper(): Promise<WhisperInstance> {
   if (cachedWhisper) return cachedWhisper;
-  // ESM package: must use native import() at runtime. Function() prevents tsc from emitting require().
-  const load = new Function('return (s) => import(s)') as (s: string) => Promise<typeof import('whisper-onnx-speech-to-text')>;
-  const mod = await load('whisper-onnx-speech-to-text');
-  const initWhisper = mod.initWhisper;
-  const modelName = process.env.WHISPER_MODEL || 'base.en';
-  cachedWhisper = await initWhisper(modelName);
+  // Load ESM via path relative to this module (__dirname). Never pass model name to import().
+  const loaderDir = typeof __dirname !== 'undefined' ? __dirname : path.join(process.cwd(), 'dist', 'services');
+  const loaderPath = path.join(loaderDir, '..', 'whisper-loader.mjs');
+  const loaderUrl = pathToFileURL(loaderPath).href;
+  const load = new Function('return (u) => import(u)') as (u: string) => Promise<unknown>;
+  const loader = await load(loaderUrl);
+  const createWhisper: ((modelName: string) => Promise<WhisperInstance>) | undefined =
+    (typeof loader === 'function' ? loader as (n: string) => Promise<WhisperInstance> : undefined) ??
+    (Reflect.get(loader as object, 'createWhisper') as ((n: string) => Promise<WhisperInstance>) | undefined) ??
+    (typeof (loader as { default?: unknown })?.default === 'function' ? (loader as { default: (n: string) => Promise<WhisperInstance> }).default : undefined) ??
+    ((loader as { default?: { createWhisper?: (n: string) => Promise<WhisperInstance> } }).default?.createWhisper);
+  if (typeof createWhisper !== 'function') {
+    const keys = typeof loader === 'object' && loader !== null ? Object.getOwnPropertyNames(loader) : [];
+    throw new Error('whisper-loader.mjs: createWhisper not found. Keys: ' + keys.join(', '));
+  }
+  // Avoid literal that could be mistaken for a module specifier; use env or constructed default.
+  const modelName = process.env.WHISPER_MODEL || (['base', 'en'].join('.') as string);
+  cachedWhisper = await createWhisper(modelName);
   return cachedWhisper;
 }
 
