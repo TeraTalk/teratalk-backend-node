@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
+const http = require('http');
 
 const MODEL_ID = 'whisper-base.en';
 const BASE_URL = `https://huggingface.co/Xenova/${MODEL_ID}/resolve/main`;
@@ -28,21 +29,34 @@ const FILES = [
   'onnx/decoder_model_merged.onnx',
 ];
 
-function get(url) {
+function get(url, redirectCount = 0) {
+  const maxRedirects = 10;
+  if (redirectCount > maxRedirects) {
+    return Promise.reject(new Error('Too many redirects'));
+  }
+  const lib = url.startsWith('https') ? https : http;
   return new Promise((resolve, reject) => {
-    https.get(url, { headers: { 'User-Agent': 'Node' } }, (res) => {
-      if (res.statusCode === 302 || res.statusCode === 301) {
-        return get(res.headers.location).then(resolve).catch(reject);
+    const req = lib.get(url, { headers: { 'User-Agent': 'Node' } }, (res) => {
+      const status = res.statusCode;
+      if (status === 301 || status === 302 || status === 307 || status === 308) {
+        const loc = res.headers.location;
+        if (!loc) {
+          reject(new Error(`${url} => ${status} without Location`));
+          return;
+        }
+        const next = loc.startsWith('http') ? loc : new URL(loc, url).href;
+        return get(next, redirectCount + 1).then(resolve).catch(reject);
       }
-      if (res.statusCode !== 200) {
-        reject(new Error(`${url} => ${res.statusCode}`));
+      if (status !== 200) {
+        reject(new Error(`${url} => ${status}`));
         return;
       }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
       res.on('end', () => resolve(Buffer.concat(chunks)));
       res.on('error', reject);
-    }).on('error', reject);
+    });
+    req.on('error', reject);
   });
 }
 
