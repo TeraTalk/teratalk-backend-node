@@ -17,7 +17,10 @@ let cachedWhisper: Awaited<ReturnType<typeof import('whisper-onnx-speech-to-text
 
 async function getWhisper() {
   if (cachedWhisper) return cachedWhisper;
-  const { initWhisper } = await import('whisper-onnx-speech-to-text');
+  // ESM package: must use native import() at runtime. Function() prevents tsc from emitting require().
+  const load = new Function('return (s) => import(s)') as (s: string) => Promise<typeof import('whisper-onnx-speech-to-text')>;
+  const mod = await load('whisper-onnx-speech-to-text');
+  const initWhisper = mod.initWhisper;
   const modelName = process.env.WHISPER_MODEL || 'base.en';
   cachedWhisper = await initWhisper(modelName);
   return cachedWhisper;
