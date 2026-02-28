@@ -24,24 +24,41 @@ let cachedWhisper: WhisperInstance | null = null;
 
 async function getWhisper(): Promise<WhisperInstance> {
   if (cachedWhisper) return cachedWhisper;
-  // Load ESM via path relative to this module (__dirname). Never pass model name to import().
+  // Load ESM via path relative to this module. Prefer same dir as this file (src/ or dist/services/), then dist/.
   const loaderDir = typeof __dirname !== 'undefined' ? __dirname : path.join(process.cwd(), 'dist', 'services');
-  const loaderPath = path.join(loaderDir, '..', 'whisper-loader.mjs');
+  const candidatePaths = [
+    path.join(loaderDir, '..', 'whisper-loader.mjs'),
+    path.join(process.cwd(), 'dist', 'whisper-loader.mjs'),
+  ];
+  let loaderPath: string | null = null;
+  for (const p of candidatePaths) {
+    try {
+      await fs.access(p);
+      loaderPath = p;
+      break;
+    } catch {
+      continue;
+    }
+  }
+  if (!loaderPath) {
+    throw new Error(
+      `whisper-loader.mjs not found. Tried: ${candidatePaths.join(', ')}. Run "npm run build" or ensure the file exists.`
+    );
+  }
   const loaderUrl = pathToFileURL(loaderPath).href;
-  const load = new Function('return (u) => import(u)') as (u: string) => Promise<unknown>;
+  const load = (new Function('return (u) => import(u)')()) as (u: string) => Promise<unknown>;
   const loader = await load(loaderUrl);
-  const createWhisper: ((modelName: string) => Promise<WhisperInstance>) | undefined =
-    (typeof loader === 'function' ? loader as (n: string) => Promise<WhisperInstance> : undefined) ??
-    (Reflect.get(loader as object, 'createWhisper') as ((n: string) => Promise<WhisperInstance>) | undefined) ??
-    (typeof (loader as { default?: unknown })?.default === 'function' ? (loader as { default: (n: string) => Promise<WhisperInstance> }).default : undefined) ??
-    ((loader as { default?: { createWhisper?: (n: string) => Promise<WhisperInstance> } }).default?.createWhisper);
+  const createWhisper: (() => Promise<WhisperInstance>) | undefined =
+    (typeof loader === 'function' ? loader as () => Promise<WhisperInstance> : undefined) ??
+    (Reflect.get(loader as object, 'createWhisper') as (() => Promise<WhisperInstance>) | undefined) ??
+    (typeof (loader as { default?: unknown })?.default === 'function' ? (loader as { default: () => Promise<WhisperInstance> }).default : undefined) ??
+    ((loader as { default?: { createWhisper?: () => Promise<WhisperInstance> } }).default?.createWhisper);
   if (typeof createWhisper !== 'function') {
     const keys = typeof loader === 'object' && loader !== null ? Object.getOwnPropertyNames(loader) : [];
     throw new Error('whisper-loader.mjs: createWhisper not found. Keys: ' + keys.join(', '));
   }
-  // Avoid literal that could be mistaken for a module specifier; use env or constructed default.
-  const modelName = process.env.WHISPER_MODEL || (['base', 'en'].join('.') as string);
-  cachedWhisper = await createWhisper(modelName);
+  // Model name is set via process.env.WHISPER_MODEL and read inside the ESM loader only (never passed from CJS).
+  cachedWhisper = await createWhisper();
   return cachedWhisper;
 }
 
