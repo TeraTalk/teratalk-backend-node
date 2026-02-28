@@ -20,6 +20,8 @@ const fileFilter = (
     'audio/mpeg',
     'audio/wav',
     'audio/webm',
+    'audio/ogg',
+    'application/ogg',
   ];
 
   if (allowedMimeTypes.includes(file.mimetype)) {
