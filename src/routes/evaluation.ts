@@ -5,6 +5,13 @@ import { SodaService } from '../services/soda_service';
 import { PersonalizationService } from '../services/personalization_service';
 import { supabase } from '../config/supabase';
 import {
+  getSeverityThreshold,
+  isPassForLevel,
+  nextSpeechLevelFromHistory,
+  normalizeSpeechLevel,
+  SpeechLevel,
+} from '../config/speech_level_policy';
+import {
   EvaluationAnalyzeRequest,
   EvaluationResponse,
   EvaluationSession,
@@ -43,38 +50,19 @@ function parseLevel(value: unknown): number | null {
   return clampGameLevel(parsed);
 }
 
-function difficultyToLevel(value: unknown): number | null {
-  if (typeof value !== 'string') return null;
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return null;
-
-  if (normalized === 'beginner') return 2;
-  if (normalized === 'intermediate') return 3;
-  if (normalized === 'advanced') return 5;
-
-  const numeric = toNumber(normalized);
-  return numeric === null ? null : clampGameLevel(numeric);
-}
-
-function levelToDifficulty(level: number): 'beginner' | 'intermediate' | 'advanced' {
-  if (level <= 2) return 'beginner';
-  if (level <= 4) return 'intermediate';
-  return 'advanced';
-}
-
-async function getOrInitializeUserLevel(
+async function getUserSpeechProfile(
   userId: string,
   requestId: string
-): Promise<number | null> {
+): Promise<{ speechLevel: SpeechLevel; initialDifficulty?: string } | null> {
   try {
     const { data: profile, error } = await supabase
       .from('user_profiles')
-      .select('initial_difficulty')
+      .select('speech_level, initial_difficulty')
       .eq('user_id', userId)
       .single();
 
     if (error || !profile) {
-      console.warn('[Evaluation][Analyze] Unable to fetch profile for level', {
+      console.warn('[Evaluation][Analyze] Unable to fetch profile speech level', {
         requestId,
         userId,
         error: error?.message || null,
@@ -82,37 +70,15 @@ async function getOrInitializeUserLevel(
       return null;
     }
 
-    const parsedLevel = difficultyToLevel(profile.initial_difficulty);
-    if (parsedLevel !== null) {
-      return parsedLevel;
-    }
-
-    const fallbackLevel = MIN_GAME_LEVEL;
-    const fallbackDifficulty = levelToDifficulty(fallbackLevel);
-    const { error: updateError } = await supabase
-      .from('user_profiles')
-      .update({ initial_difficulty: fallbackDifficulty })
-      .eq('user_id', userId);
-
-    if (updateError) {
-      console.warn('[Evaluation][Analyze] Failed to initialize missing difficulty', {
-        requestId,
-        userId,
-        fallbackDifficulty,
-        message: updateError.message,
-      });
-      return fallbackLevel;
-    }
-
-    console.log('[Evaluation][Analyze] Initialized missing user level', {
-      requestId,
-      userId,
-      fallbackLevel,
-      fallbackDifficulty,
-    });
-    return fallbackLevel;
+    return {
+      speechLevel: normalizeSpeechLevel(profile.speech_level),
+      initialDifficulty:
+        typeof profile.initial_difficulty === 'string'
+          ? profile.initial_difficulty
+          : undefined,
+    };
   } catch (error) {
-    console.warn('[Evaluation][Analyze] Unexpected level initialization error', {
+    console.warn('[Evaluation][Analyze] Unexpected speech level fetch error', {
       requestId,
       userId,
       message: error instanceof Error ? error.message : String(error),
@@ -121,43 +87,105 @@ async function getOrInitializeUserLevel(
   }
 }
 
-async function persistUserLevel(
+async function persistUserSpeechLevel(
   userId: string,
-  level: number,
+  speechLevel: SpeechLevel,
   requestId: string
 ): Promise<void> {
-  const bounded = clampGameLevel(level);
-  const difficulty = levelToDifficulty(bounded);
-
   try {
     const { error } = await supabase
       .from('user_profiles')
-      .update({ initial_difficulty: difficulty })
+      .update({ speech_level: speechLevel })
       .eq('user_id', userId);
 
     if (error) {
-      console.warn('[Evaluation][Analyze] Failed to persist user level', {
+      console.warn('[Evaluation][Analyze] Failed to persist speech level', {
         requestId,
         userId,
-        level: bounded,
-        difficulty,
+        speechLevel,
         message: error.message,
       });
       return;
     }
 
-    console.log('[Evaluation][Analyze] User level persisted', {
+    console.log('[Evaluation][Analyze] User speech level persisted', {
       requestId,
       userId,
-      level: bounded,
-      difficulty,
+      speechLevel,
     });
   } catch (error) {
-    console.warn('[Evaluation][Analyze] Unexpected level persistence error', {
+    console.warn('[Evaluation][Analyze] Unexpected speech level persistence error', {
       requestId,
       userId,
-      level: bounded,
-      difficulty,
+      speechLevel,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+async function getRecentSpeechOutcomes(
+  userId: string,
+  limit: number,
+  requestId: string,
+): Promise<boolean[]> {
+  try {
+    const { data, error } = await supabase
+      .from('user_speech_attempts')
+      .select('is_pass')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(limit);
+
+    if (error) {
+      console.warn('[Evaluation][Analyze] Failed to load recent speech attempts', {
+        requestId,
+        userId,
+        message: error.message,
+      });
+      return [];
+    }
+
+    return (data ?? [])
+      .map((row) => (typeof row.is_pass === 'boolean' ? row.is_pass : null))
+      .filter((outcome): outcome is boolean => outcome !== null);
+  } catch (error) {
+    console.warn('[Evaluation][Analyze] Unexpected speech attempt history error', {
+      requestId,
+      userId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return [];
+  }
+}
+
+async function recordSpeechOutcome(
+  userId: string,
+  isPass: boolean,
+  severity: number | null,
+  requestId: string,
+): Promise<void> {
+  try {
+    const { error } = await supabase.from('user_speech_attempts').insert({
+      user_id: userId,
+      is_pass: isPass,
+      severity,
+    });
+
+    if (error) {
+      console.warn('[Evaluation][Analyze] Failed to persist speech attempt', {
+        requestId,
+        userId,
+        isPass,
+        severity,
+        message: error.message,
+      });
+    }
+  } catch (error) {
+    console.warn('[Evaluation][Analyze] Unexpected speech attempt persist error', {
+      requestId,
+      userId,
+      isPass,
+      severity,
       message: error instanceof Error ? error.message : String(error),
     });
   }
@@ -377,16 +405,19 @@ router.post(
       const tokenUserId = await resolveOptionalUserId(req);
       const userId = tokenUserId || (req.body.userId as string | undefined);
       const age = req.body.age ? parseInt(req.body.age as string) : undefined;
-      const levelFromBody = parseLevel(req.body.level);
-      const profileLevel = userId
-        ? await getOrInitializeUserLevel(userId, requestId)
+      const legacyLevel = parseLevel(req.body.level);
+      const gameLevelFromBody = parseLevel(req.body.game_level);
+      const gameLevelUsed = gameLevelFromBody ?? legacyLevel ?? MIN_GAME_LEVEL;
+      const profile = userId
+        ? await getUserSpeechProfile(userId, requestId)
         : null;
-      const effectiveLevel = levelFromBody ?? profileLevel ?? MIN_GAME_LEVEL;
+      const speechLevelFromRequest = req.body.speechLevel as string | undefined;
+      const speechLevelBefore = normalizeSpeechLevel(
+        profile?.speechLevel ?? speechLevelFromRequest ?? 'beginner',
+      );
       const difficulty =
-        (req.body.difficulty as string | undefined) ||
-        (profileLevel !== null ? levelToDifficulty(profileLevel) : undefined);
+        (req.body.difficulty as string | undefined) || profile?.initialDifficulty;
       const problemSounds = parseStringArray(req.body.problemSounds);
-      const speechLevel = req.body.speechLevel as string | undefined;
       const attempt = req.body.attempt ? parseInt(req.body.attempt as string) : undefined;
       const playerModeRaw = (req.body.player_mode as string | undefined) || 'alone';
       const playerMode = playerModeRaw === 'with_guardian' ? 'with_guardian' : 'alone';
@@ -409,10 +440,11 @@ router.post(
         tokenUserId: tokenUserId || null,
         age: age ?? null,
         difficulty: difficulty || null,
-        speechLevel: speechLevel || null,
-        level: levelFromBody ?? null,
-        profileLevel: profileLevel ?? null,
-        effectiveLevel,
+        speechLevelRequest: speechLevelFromRequest || null,
+        speechLevelBefore,
+        level: legacyLevel ?? null,
+        game_level: gameLevelFromBody ?? null,
+        gameLevelUsed,
         attempt: attempt ?? null,
         player_mode: playerMode,
         word_id: wordId || null,
@@ -442,17 +474,41 @@ router.post(
       const context = await PersonalizationService.buildContext(
         userId,
         age,
-        speechLevel,
+        speechLevelBefore,
         difficulty,
         problemSounds
       );
       const gamePersonalization = buildGamePersonalization(sodaResponse, context, {
-        currentLevel: effectiveLevel,
+        currentLevel: gameLevelUsed,
         attempt,
         playerMode,
       });
+
+      const severity =
+        toNumber(sodaResponse.severity) ??
+        toNumber(sodaResponse.severity_text) ??
+        toNumber(sodaResponse.severity_phoneme);
+      const boundedSeverity =
+        severity === null ? null : Math.max(0, Math.min(1, severity));
+      const severityThresholdUsed = getSeverityThreshold(speechLevelBefore);
+      const sodaIsCorrect =
+        typeof sodaResponse.is_correct === 'boolean' ? sodaResponse.is_correct : null;
+      const isCorrect =
+        boundedSeverity !== null
+          ? isPassForLevel(speechLevelBefore, boundedSeverity)
+          : (sodaIsCorrect ?? false);
+
+      let speechLevelAfter = speechLevelBefore;
       if (userId) {
-        await persistUserLevel(userId, gamePersonalization.nextDifficulty, requestId);
+        const historyBefore = await getRecentSpeechOutcomes(userId, 6, requestId);
+        speechLevelAfter = nextSpeechLevelFromHistory(speechLevelBefore, [
+          isCorrect,
+          ...historyBefore,
+        ]);
+        await recordSpeechOutcome(userId, isCorrect, boundedSeverity, requestId);
+        if (speechLevelAfter !== speechLevelBefore) {
+          await persistUserSpeechLevel(userId, speechLevelAfter, requestId);
+        }
       }
 
       console.log('[Evaluation][Analyze] SODA response received', {
@@ -462,13 +518,23 @@ router.post(
         severity: sodaResponse.severity ?? null,
         error_type: sodaResponse.error_type ?? null,
         therapy_level: sodaResponse.therapy_level ?? null,
+        severityThresholdUsed,
+        is_correct: isCorrect,
+        speechLevelBefore,
+        speechLevelAfter,
         gamePersonalization,
-        effectiveLevel,
+        gameLevelUsed,
       });
       res.json({
         ...sodaResponse,
+        is_correct: isCorrect,
         gamePersonalization,
-        effectiveLevel,
+        effectiveLevel: gameLevelUsed,
+        gameLevelUsed,
+        speechLevelUsed: speechLevelBefore,
+        speechLevelBefore,
+        speechLevelAfter,
+        severityThresholdUsed,
       });
     } catch (error) {
       console.error('[Evaluation][Analyze] Error', {

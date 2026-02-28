@@ -47,6 +47,11 @@ export interface EvaluationResponse {
   personalizedRecommendations: string[];
   pronunciationFeedback: string;
   timestamp: string;
+  speechLevelUsed?: string;
+  speechLevelBefore?: string;
+  speechLevelAfter?: string;
+  severityThresholdUsed?: number;
+  gameLevelUsed?: number;
 }
 
 /// Evaluation session
