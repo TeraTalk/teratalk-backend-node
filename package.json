@@ -23,7 +23,8 @@
     "express": "^4.18.2",
     "firebase-admin": "^13.0.0",
     "multer": "^2.0.2",
-    "node-cron": "^3.0.3"
+    "node-cron": "^3.0.3",
+    "whisper-onnx-speech-to-text": "^1.0.1"
   },
   "devDependencies": {
     "@types/cors": "^2.8.17",
