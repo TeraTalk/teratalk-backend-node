@@ -1,3 +1,6 @@
+/// Game type for the analyze endpoint (single reusable endpoint for all games)
+export type GameType = 'candy_land' | 'pizza_toppings';
+
 /// Evaluation request for analyzing a word pronunciation
 export interface EvaluationAnalyzeRequest {
   word: string;
@@ -7,6 +10,8 @@ export interface EvaluationAnalyzeRequest {
   difficulty?: string;
   problemSounds?: string[];
   sessionId?: string;
+  /** Optional. Identifies which game sent the request; defaults to 'candy_land'. */
+  game_type?: GameType;
 }
 
 /// AI analysis response (mocked)

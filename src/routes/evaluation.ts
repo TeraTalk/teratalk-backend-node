@@ -422,6 +422,11 @@ router.post(
       const playerModeRaw = (req.body.player_mode as string | undefined) || 'alone';
       const playerMode = playerModeRaw === 'with_guardian' ? 'with_guardian' : 'alone';
       const wordId = req.body.word_id as string | undefined;
+      const gameTypeRaw = (req.body.game_type as string | undefined) || (req.body.game_id as string | undefined);
+      const gameType =
+        gameTypeRaw === 'pizza_toppings'
+          ? 'pizza_toppings'
+          : 'candy_land';
 
       console.log('[Evaluation][Analyze] Request received', {
         requestId,
@@ -448,6 +453,7 @@ router.post(
         attempt: attempt ?? null,
         player_mode: playerMode,
         word_id: wordId || null,
+        game_type: gameType,
       });
 
       // Validate required fields
