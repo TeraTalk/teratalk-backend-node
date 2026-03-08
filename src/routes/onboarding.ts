@@ -167,6 +167,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         child_name: onboardingData.childName.trim(),
         child_age: onboardingData.childAge,
         speech_level: onboardingData.speechLevel.toLowerCase(),
+        speech_level_set_at: new Date().toISOString(),
         initial_difficulty: difficulty,
         problem_sounds: onboardingData.problemSounds,
         caregiver_schedule: onboardingData.caregiverSchedule,

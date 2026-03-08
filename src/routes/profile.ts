@@ -66,12 +66,36 @@ router.get('/check', authenticate, async (req: Request, res: Response) => {
 function validateProfileUpdateRequest(
   body: any
 ): { valid: boolean; error?: string } {
+  const validSpeechLevels = ['beginner', 'intermediate', 'advanced'];
+
   // At least one field must be provided
-  if (!body.childName && !body.problemSounds && !body.caregiverSchedule) {
+  if (
+    !body.childName &&
+    !body.problemSounds &&
+    !body.caregiverSchedule &&
+    body.speechLevel === undefined
+  ) {
     return {
       valid: false,
-      error: 'At least one field (childName, problemSounds, or caregiverSchedule) must be provided',
+      error:
+        'At least one field (childName, problemSounds, caregiverSchedule, or speechLevel) must be provided',
     };
+  }
+
+  // Validate speechLevel if provided
+  if (body.speechLevel !== undefined) {
+    if (typeof body.speechLevel !== 'string') {
+      return {
+        valid: false,
+        error: 'speechLevel must be a string',
+      };
+    }
+    if (!validSpeechLevels.includes(body.speechLevel.trim().toLowerCase())) {
+      return {
+        valid: false,
+        error: `speechLevel must be one of: ${validSpeechLevels.join(', ')}`,
+      };
+    }
   }
 
   // Validate childName if provided
@@ -169,6 +193,10 @@ router.put('/', authenticate, async (req: Request, res: Response) => {
     }
     if (req.body.caregiverSchedule !== undefined) {
       updateData.caregiver_schedule = req.body.caregiverSchedule;
+    }
+    if (req.body.speechLevel !== undefined) {
+      updateData.speech_level = req.body.speechLevel.trim().toLowerCase();
+      updateData.speech_level_set_at = new Date().toISOString();
     }
 
     // Update profile in Supabase

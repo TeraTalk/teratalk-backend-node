@@ -1,6 +1,37 @@
 /// Game type for the analyze endpoint (single reusable endpoint for all games)
 export type GameType = 'candy_land' | 'pizza_toppings';
 
+/// Alignment step from phonological detector (expected vs predicted phoneme)
+export interface PhonologicalAlignmentStep {
+  expected: string;
+  predicted: string;
+  operation: 'match' | 'substitution' | 'insertion' | 'deletion';
+}
+
+/// Detected process from phonological detector
+export interface PhonologicalDetectedProcess {
+  process_type: string;
+  position: string;
+  affected_phonemes: string[];
+  severity_weight?: number;
+}
+
+/// Phonological detector API response (new structure)
+export interface PhonologicalResponse {
+  error_category: string;
+  process_type: string;
+  expected_text: string;
+  predicted_text: string;
+  expected_phonemes: string[];
+  predicted_phonemes: string[];
+  alignment: PhonologicalAlignmentStep[];
+  pattern_position?: string;
+  affected_unit: string[];
+  severity: number;
+  confidence?: number;
+  detected_processes?: PhonologicalDetectedProcess[];
+}
+
 /// Evaluation request for analyzing a word pronunciation
 export interface EvaluationAnalyzeRequest {
   word: string;
