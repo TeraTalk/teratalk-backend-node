@@ -395,6 +395,56 @@ function extractExpectedSound(word: string): string {
   return upperWord[0] || 'UNKNOWN';
 }
 
+/// GET /api/evaluation/weekly-progress
+/// Returns goals met (distinct days with ≥1 kid attempt) and total activities in the last 30 days.
+router.get('/weekly-progress', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+    const since = new Date();
+    since.setDate(since.getDate() - 30);
+    const sinceIso = since.toISOString();
+
+    const { data, error } = await supabase
+      .from('user_speech_attempts')
+      .select('created_at')
+      .eq('user_id', userId)
+      .eq('is_kid_attempt', true)
+      .gte('created_at', sinceIso)
+      .order('created_at', { ascending: true });
+
+    if (error) {
+      console.warn('[Evaluation][WeeklyProgress] Failed to load attempts', {
+        userId,
+        message: error.message,
+      });
+      res.status(200).json({ goalsMet: 0, totalActivities: 0 });
+      return;
+    }
+
+    const rows = data ?? [];
+    const distinctDays = new Set(
+      rows.map((r) => {
+        const raw = r.created_at;
+        if (typeof raw === 'string' && raw.length >= 10) return raw.slice(0, 10);
+        return new Date(raw).toISOString().slice(0, 10);
+      })
+    ).size;
+    res.status(200).json({
+      goalsMet: distinctDays,
+      totalActivities: rows.length,
+    });
+  } catch (err) {
+    console.warn('[Evaluation][WeeklyProgress] Error', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: 'Failed to load weekly progress' });
+  }
+});
+
 /// POST /api/evaluation/analyze
 /// Analyzes a word pronunciation with audio file
 /// Can work with or without authentication for Postman testing
