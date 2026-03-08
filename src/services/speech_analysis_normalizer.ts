@@ -1,5 +1,6 @@
-/// Maps Phonological Detector API response to the SODA-like shape used by
-/// buildGamePersonalization and toSodaResponse.
+/// Maps Phonological Detector API response (new structure with alignment,
+/// detected_processes, etc.) to the SODA-like shape used by buildGamePersonalization
+/// and toSodaResponse.
 export function mapPhonologicalToSodaLike(
   phonologicalResponse: Record<string, any>
 ): Record<string, any> {
@@ -19,31 +20,54 @@ export function mapPhonologicalToSodaLike(
 
   const expectedPhonemes = phonologicalResponse.expected_phonemes;
   const affectedUnit = phonologicalResponse.affected_unit;
-  const basePhoneme = Array.isArray(expectedPhonemes) && expectedPhonemes[0] != null
-    ? String(expectedPhonemes[0])
-    : Array.isArray(affectedUnit) && affectedUnit[0] != null
-      ? String(affectedUnit[0])
-      : '';
-
   const predictedPhonemes = phonologicalResponse.predicted_phonemes;
   const predictedText = phonologicalResponse.predicted_text;
-  const targetPhoneme = Array.isArray(predictedPhonemes) && predictedPhonemes[0] != null
-    ? String(predictedPhonemes[0])
-    : typeof predictedText === 'string'
-      ? predictedText
-      : '';
+  const alignment = phonologicalResponse.alignment;
 
-  const therapyLevel =
-    severity >= 0.6 ? 'high' : 'low';
+  // Prefer base/target from first substitution in alignment (new structure)
+  let basePhoneme = '';
+  let targetPhoneme = '';
+  if (Array.isArray(alignment)) {
+    const firstSub = alignment.find(
+      (s: { operation?: string }) => s?.operation === 'substitution'
+    );
+    if (firstSub && firstSub.expected != null && firstSub.predicted != null) {
+      basePhoneme = String(firstSub.expected);
+      targetPhoneme = String(firstSub.predicted);
+    }
+  }
+  if (!basePhoneme) {
+    basePhoneme =
+      Array.isArray(expectedPhonemes) && expectedPhonemes[0] != null
+        ? String(expectedPhonemes[0])
+        : Array.isArray(affectedUnit) && affectedUnit[0] != null
+          ? String(affectedUnit[0])
+          : '';
+  }
+  if (!targetPhoneme) {
+    targetPhoneme =
+      Array.isArray(predictedPhonemes) && predictedPhonemes[0] != null
+        ? String(predictedPhonemes[0])
+        : typeof predictedText === 'string'
+          ? predictedText
+          : '';
+  }
+
+  const therapyLevel = severity >= 0.6 ? 'high' : 'low';
 
   return {
     ...phonologicalResponse,
-    predicted: phonologicalResponse.predicted_text ?? phonologicalResponse.predicted ?? '',
-    expected: phonologicalResponse.expected_text ?? phonologicalResponse.expected,
+    predicted:
+      phonologicalResponse.predicted_text ??
+      phonologicalResponse.predicted ??
+      '',
+    expected:
+      phonologicalResponse.expected_text ?? phonologicalResponse.expected ?? '',
     severity,
     error_type: errorType,
     base_phoneme: basePhoneme,
     target_phoneme: targetPhoneme,
     therapy_level: therapyLevel,
+    // Pass through new fields (error_category, alignment, pattern_position, detected_processes, confidence)
   };
 }

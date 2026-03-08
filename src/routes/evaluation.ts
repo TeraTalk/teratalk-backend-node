@@ -105,7 +105,10 @@ async function persistUserSpeechLevel(
   try {
     const { error } = await supabase
       .from('user_profiles')
-      .update({ speech_level: speechLevel })
+      .update({
+        speech_level: speechLevel,
+        speech_level_set_at: new Date().toISOString(),
+      })
       .eq('user_id', userId);
 
     if (error) {
@@ -140,14 +143,34 @@ async function getRecentSpeechOutcomes(
 ): Promise<boolean[]> {
   try {
     const limit = getHistoryWindowForLevel(speechLevel);
-    const { data, error } = await supabase
+
+    // Only count attempts after the user was last set to this level (window reset)
+    const { data: profileRow } = await supabase
+      .from('user_profiles')
+      .select('speech_level_set_at')
+      .eq('user_id', userId)
+      .single();
+
+    const setAt = profileRow?.speech_level_set_at;
+    const since =
+      setAt != null && setAt !== ''
+        ? new Date(setAt).toISOString()
+        : null;
+
+    let query = supabase
       .from('user_speech_attempts')
-      .select('is_pass')
+      .select('is_pass, created_at')
       .eq('user_id', userId)
       .eq('speech_level', speechLevel)
       .eq('is_kid_attempt', true)
       .order('created_at', { ascending: false })
       .limit(limit);
+
+    if (since != null) {
+      query = query.gte('created_at', since);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.warn('[Evaluation][Analyze] Failed to load recent speech attempts', {
@@ -342,7 +365,15 @@ function toSodaResponse(sodaResponse: Record<string, any>) {
     ? Math.max(0, Math.min(1, severity))
     : 0.5;
 
-  const confidence = Math.max(0, Math.min(1, 1 - safeSeverity));
+  // Use API confidence when present (e.g. phonological new structure), else derive from severity
+  const rawConfidence =
+    typeof sodaResponse.confidence === 'number' && Number.isFinite(sodaResponse.confidence)
+      ? sodaResponse.confidence
+      : null;
+  const confidence =
+    rawConfidence != null
+      ? Math.max(0, Math.min(1, rawConfidence))
+      : Math.max(0, Math.min(1, 1 - safeSeverity));
   const score = Math.round(confidence * 100);
 
   const detectedSounds = [
