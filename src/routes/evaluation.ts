@@ -7,6 +7,7 @@ import { mapPhonologicalToSodaLike } from '../services/speech_analysis_normalize
 import { PersonalizationService } from '../services/personalization_service';
 import { supabase } from '../config/supabase';
 import {
+  getHistoryWindowForLevel,
   getSeverityThreshold,
   isPassForLevel,
   nextSpeechLevelFromHistory,
@@ -134,14 +135,17 @@ async function persistUserSpeechLevel(
 
 async function getRecentSpeechOutcomes(
   userId: string,
-  limit: number,
+  speechLevel: SpeechLevel,
   requestId: string,
 ): Promise<boolean[]> {
   try {
+    const limit = getHistoryWindowForLevel(speechLevel);
     const { data, error } = await supabase
       .from('user_speech_attempts')
       .select('is_pass')
       .eq('user_id', userId)
+      .eq('speech_level', speechLevel)
+      .eq('is_kid_attempt', true)
       .order('created_at', { ascending: false })
       .limit(limit);
 
@@ -149,6 +153,7 @@ async function getRecentSpeechOutcomes(
       console.warn('[Evaluation][Analyze] Failed to load recent speech attempts', {
         requestId,
         userId,
+        speechLevel,
         message: error.message,
       });
       return [];
@@ -172,12 +177,16 @@ async function recordSpeechOutcome(
   isPass: boolean,
   severity: number | null,
   requestId: string,
+  speechLevel: SpeechLevel,
+  isKidAttempt: boolean,
 ): Promise<void> {
   try {
     const { error } = await supabase.from('user_speech_attempts').insert({
       user_id: userId,
       is_pass: isPass,
       severity,
+      speech_level: speechLevel,
+      is_kid_attempt: isKidAttempt,
     });
 
     if (error) {
@@ -436,6 +445,9 @@ router.post(
         gameTypeRaw === 'pizza_toppings'
           ? 'pizza_toppings'
           : 'candy_land';
+      const isKidTurnRaw = req.body.is_kid_turn;
+      const isKidAttempt =
+        isKidTurnRaw === false || isKidTurnRaw === 'false' ? false : true;
 
       console.log('[Evaluation][Analyze] Request received', {
         requestId,
@@ -463,6 +475,7 @@ router.post(
         player_mode: playerMode,
         word_id: wordId || null,
         game_type: gameType,
+        is_kid_turn: isKidAttempt,
       });
 
       // Validate required fields
@@ -481,6 +494,7 @@ router.post(
       }
 
       const model = getModelFromBody(req.body);
+      console.log('[Evaluation][Analyze] Using model', { model, requestId });
       if (model === 'phonological') {
         const url = process.env.PHONOLOGICAL_DETECT_URL;
         if (!url || url.trim() === '') {
@@ -541,12 +555,12 @@ router.post(
 
       let speechLevelAfter = speechLevelBefore;
       if (userId) {
-        const historyBefore = await getRecentSpeechOutcomes(userId, 6, requestId);
+        const historyBefore = await getRecentSpeechOutcomes(userId, speechLevelBefore, requestId);
         speechLevelAfter = nextSpeechLevelFromHistory(speechLevelBefore, [
           isCorrect,
           ...historyBefore,
         ]);
-        await recordSpeechOutcome(userId, isCorrect, boundedSeverity, requestId);
+        await recordSpeechOutcome(userId, isCorrect, boundedSeverity, requestId, speechLevelBefore, isKidAttempt);
         if (speechLevelAfter !== speechLevelBefore) {
           await persistUserSpeechLevel(userId, speechLevelAfter, requestId);
         }
@@ -703,6 +717,7 @@ router.post(
       const expectedSound = extractExpectedSound(word);
 
       const model = getModelFromBody(req.body);
+      console.log('[Evaluation][SessionSubmit] Using model', { model, requestId, sessionId });
       if (model === 'phonological') {
         const url = process.env.PHONOLOGICAL_DETECT_URL;
         if (!url || url.trim() === '') {

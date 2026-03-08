@@ -1,5 +1,8 @@
 /// Phonological Detector service proxy for pronunciation analysis.
 /// Forwards audio + target_text to the external detector endpoint.
+/// Converts uploads (e.g. M4A/AAC) to WAV so the API accepts them.
+import { ensureWavOrMp3 } from './audio_transcode';
+
 export class PhonologicalDetectorService {
   static async analyzeSpeech(
     expectedText: string,
@@ -18,6 +21,12 @@ export class PhonologicalDetectorService {
 
     const targetText = expectedText.trim() || expectedText;
 
+    const { buffer, filename, mimetype } = await ensureWavOrMp3(
+      audioFile.buffer,
+      audioFile.originalname,
+      audioFile.mimetype
+    );
+
     console.log('[PhonologicalDetectorService] Preparing detect request', {
       endpoint,
       targetText,
@@ -25,12 +34,14 @@ export class PhonologicalDetectorService {
         originalname: audioFile.originalname,
         mimetype: audioFile.mimetype,
         size: audioFile.size,
+        sentAs: filename,
+        sentMimetype: mimetype,
       },
     });
 
     const form = new FormData();
-    const audioBlob = new Blob([audioFile.buffer], { type: audioFile.mimetype });
-    form.append('audio', audioBlob, audioFile.originalname || 'audio.m4a');
+    const audioBlob = new Blob([buffer], { type: mimetype });
+    form.append('audio', audioBlob, filename);
     form.append('target_text', targetText);
 
     let response: globalThis.Response;
