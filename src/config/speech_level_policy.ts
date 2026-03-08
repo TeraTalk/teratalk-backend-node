@@ -8,12 +8,12 @@ export const SPEECH_LEVEL_THRESHOLDS: Record<SpeechLevel, number> = {
 
 export const SPEECH_LEVEL_TRANSITIONS = {
   promotion: {
-    beginner: { to: 'intermediate', requiredPasses: 5, window: 8 },
-    intermediate: { to: 'advanced', requiredPasses: 6, window: 10 },
+    beginner: { to: 'intermediate', requiredPasses: 3, window: 6 },
+    intermediate: { to: 'advanced', requiredPasses: 4, window: 8 },
   },
   demotion: {
-    advanced: { to: 'intermediate', requiredFails: 4, window: 8 },
-    intermediate: { to: 'beginner', requiredFails: 5, window: 10 },
+    advanced: { to: 'intermediate', requiredFails: 3, window: 6 },
+    intermediate: { to: 'beginner', requiredFails: 3, window: 6 },
   },
 } as const;
 

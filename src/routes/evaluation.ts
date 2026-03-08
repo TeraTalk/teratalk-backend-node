@@ -2,6 +2,8 @@ import { Router, Request, Response } from 'express';
 import { uploadAudio } from '../middleware/upload';
 import { authenticate } from '../middleware/auth';
 import { SodaService } from '../services/soda_service';
+import { PhonologicalDetectorService } from '../services/phonological_detector_service';
+import { mapPhonologicalToSodaLike } from '../services/speech_analysis_normalizer';
 import { PersonalizationService } from '../services/personalization_service';
 import { supabase } from '../config/supabase';
 import {
@@ -48,6 +50,13 @@ function parseLevel(value: unknown): number | null {
   const parsed = toNumber(value);
   if (parsed === null) return null;
   return clampGameLevel(parsed);
+}
+
+function getModelFromBody(body: Record<string, any>): 'soda' | 'phonological' {
+  const raw =
+    (body.model as string | undefined) || (body.analysis_model as string | undefined);
+  const normalized = typeof raw === 'string' ? raw.trim().toLowerCase() : '';
+  return normalized === 'phonological' ? 'phonological' : 'soda';
 }
 
 async function getUserSpeechProfile(
@@ -318,8 +327,8 @@ function toSodaResponse(sodaResponse: Record<string, any>) {
     typeof severityRaw === 'number'
       ? severityRaw
       : typeof severityRaw === 'string'
-      ? parseFloat(severityRaw)
-      : NaN;
+        ? parseFloat(severityRaw)
+        : NaN;
   const safeSeverity = Number.isFinite(severity)
     ? Math.max(0, Math.min(1, severity))
     : 0.5;
@@ -348,7 +357,7 @@ function toSodaResponse(sodaResponse: Record<string, any>) {
 /// Extract expected sound from word (helper function)
 function extractExpectedSound(word: string): string {
   const upperWord = word.toUpperCase();
-  
+
   if (upperWord.includes('SH') || upperWord.startsWith('SH')) {
     return 'SH';
   }
@@ -373,7 +382,7 @@ function extractExpectedSound(word: string): string {
   if (upperWord.startsWith('M')) {
     return 'M';
   }
-  
+
   return upperWord[0] || 'UNKNOWN';
 }
 
@@ -436,10 +445,10 @@ router.post(
         hasAudio: Boolean(audioFile),
         audio: audioFile
           ? {
-              originalname: audioFile.originalname,
-              mimetype: audioFile.mimetype,
-              size: audioFile.size,
-            }
+            originalname: audioFile.originalname,
+            mimetype: audioFile.mimetype,
+            size: audioFile.size,
+          }
           : null,
         userId: userId || null,
         tokenUserId: tokenUserId || null,
@@ -471,12 +480,38 @@ router.post(
         return;
       }
 
-      console.log('[Evaluation][Analyze] Forwarding to SODA', {
-        requestId,
-        expectedText,
-        endpointHint: process.env.SODA_ANALYZE_URL || 'default',
-      });
-      const sodaResponse = await SodaService.analyzeSpeech(expectedText, audioFile);
+      const model = getModelFromBody(req.body);
+      if (model === 'phonological') {
+        const url = process.env.PHONOLOGICAL_DETECT_URL;
+        if (!url || url.trim() === '') {
+          res.status(503).json({
+            error: 'Phonological detector is not configured',
+            message: 'PHONOLOGICAL_DETECT_URL is not set',
+          });
+          return;
+        }
+      }
+
+      let sodaResponse: Record<string, any>;
+      if (model === 'phonological') {
+        console.log('[Evaluation][Analyze] Forwarding to Phonological Detector', {
+          requestId,
+          expectedText,
+          endpointHint: process.env.PHONOLOGICAL_DETECT_URL,
+        });
+        const phonologicalResponse = await PhonologicalDetectorService.analyzeSpeech(
+          expectedText,
+          audioFile
+        );
+        sodaResponse = mapPhonologicalToSodaLike(phonologicalResponse);
+      } else {
+        console.log('[Evaluation][Analyze] Forwarding to SODA', {
+          requestId,
+          expectedText,
+          endpointHint: process.env.SODA_ANALYZE_URL || 'default',
+        });
+        sodaResponse = await SodaService.analyzeSpeech(expectedText, audioFile);
+      }
       const context = await PersonalizationService.buildContext(
         userId,
         age,
@@ -633,8 +668,8 @@ router.post(
       const difficulty = req.body.difficulty as string | undefined;
       const problemSounds = req.body.problemSounds
         ? (Array.isArray(req.body.problemSounds)
-            ? req.body.problemSounds
-            : [req.body.problemSounds])
+          ? req.body.problemSounds
+          : [req.body.problemSounds])
         : undefined;
       const speechLevel = req.body.speechLevel as string | undefined;
 
@@ -646,10 +681,10 @@ router.post(
         hasAudio: Boolean(audioFile),
         audio: audioFile
           ? {
-              originalname: audioFile.originalname,
-              mimetype: audioFile.mimetype,
-              size: audioFile.size,
-            }
+            originalname: audioFile.originalname,
+            mimetype: audioFile.mimetype,
+            size: audioFile.size,
+          }
           : null,
         age: age ?? null,
         difficulty: difficulty || null,
@@ -667,8 +702,28 @@ router.post(
       // Extract expected sound
       const expectedSound = extractExpectedSound(word);
 
-      // Get SODA analysis
-      const sodaResponse = await SodaService.analyzeSpeech(word, audioFile);
+      const model = getModelFromBody(req.body);
+      if (model === 'phonological') {
+        const url = process.env.PHONOLOGICAL_DETECT_URL;
+        if (!url || url.trim() === '') {
+          res.status(503).json({
+            error: 'Phonological detector is not configured',
+            message: 'PHONOLOGICAL_DETECT_URL is not set',
+          });
+          return;
+        }
+      }
+
+      let sodaResponse: Record<string, any>;
+      if (model === 'phonological') {
+        const phonologicalResponse = await PhonologicalDetectorService.analyzeSpeech(
+          word,
+          audioFile!
+        );
+        sodaResponse = mapPhonologicalToSodaLike(phonologicalResponse);
+      } else {
+        sodaResponse = await SodaService.analyzeSpeech(word, audioFile!);
+      }
       const aiResponse = toSodaResponse(sodaResponse);
       console.log('[Evaluation][SessionSubmit] SODA response mapped', {
         requestId,
@@ -704,10 +759,10 @@ router.post(
         timestamp: new Date().toISOString(),
         audioMetadata: audioFile
           ? {
-              filename: audioFile.originalname,
-              size: audioFile.size,
-              mimetype: audioFile.mimetype,
-            }
+            filename: audioFile.originalname,
+            size: audioFile.size,
+            mimetype: audioFile.mimetype,
+          }
           : undefined,
       };
 
