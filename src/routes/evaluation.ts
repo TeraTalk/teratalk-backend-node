@@ -195,6 +195,20 @@ async function getRecentSpeechOutcomes(
   }
 }
 
+/** Optional detail fields for reporting; all nullable in DB. */
+export type SpeechAttemptDetail = {
+  expected_word?: string | null;
+  expected_sound?: string | null;
+  transcribed_word?: string | null;
+  error_type?: string | null;
+  confidence?: number | null;
+  game_type?: string | null;
+  word_id?: string | null;
+  attempt_number?: number | null;
+  game_level?: number | null;
+  analysis_model?: string | null;
+};
+
 async function recordSpeechOutcome(
   userId: string,
   isPass: boolean,
@@ -202,15 +216,29 @@ async function recordSpeechOutcome(
   requestId: string,
   speechLevel: SpeechLevel,
   isKidAttempt: boolean,
+  detail?: SpeechAttemptDetail,
 ): Promise<void> {
   try {
-    const { error } = await supabase.from('user_speech_attempts').insert({
+    const row: Record<string, unknown> = {
       user_id: userId,
       is_pass: isPass,
       severity,
       speech_level: speechLevel,
       is_kid_attempt: isKidAttempt,
-    });
+    };
+    if (detail) {
+      if (detail.expected_word !== undefined) row.expected_word = detail.expected_word;
+      if (detail.expected_sound !== undefined) row.expected_sound = detail.expected_sound;
+      if (detail.transcribed_word !== undefined) row.transcribed_word = detail.transcribed_word;
+      if (detail.error_type !== undefined) row.error_type = detail.error_type;
+      if (detail.confidence !== undefined) row.confidence = detail.confidence;
+      if (detail.game_type !== undefined) row.game_type = detail.game_type;
+      if (detail.word_id !== undefined) row.word_id = detail.word_id;
+      if (detail.attempt_number !== undefined) row.attempt_number = detail.attempt_number;
+      if (detail.game_level !== undefined) row.game_level = detail.game_level;
+      if (detail.analysis_model !== undefined) row.analysis_model = detail.analysis_model;
+    }
+    const { error } = await supabase.from('user_speech_attempts').insert(row);
 
     if (error) {
       console.warn('[Evaluation][Analyze] Failed to persist speech attempt', {
@@ -634,6 +662,17 @@ router.post(
           ? isPassForLevel(speechLevelBefore, boundedSeverity)
           : (sodaIsCorrect ?? false);
 
+      const rawConfidence =
+        typeof sodaResponse.confidence === 'number' && Number.isFinite(sodaResponse.confidence)
+          ? sodaResponse.confidence
+          : null;
+      const confidence =
+        rawConfidence != null
+          ? Math.max(0, Math.min(1, rawConfidence))
+          : boundedSeverity != null
+            ? Math.max(0, Math.min(1, 1 - boundedSeverity))
+            : null;
+
       let speechLevelAfter = speechLevelBefore;
       if (userId) {
         const historyBefore = await getRecentSpeechOutcomes(userId, speechLevelBefore, requestId);
@@ -641,7 +680,29 @@ router.post(
           isCorrect,
           ...historyBefore,
         ]);
-        await recordSpeechOutcome(userId, isCorrect, boundedSeverity, requestId, speechLevelBefore, isKidAttempt);
+        const attemptDetail: SpeechAttemptDetail = {
+          expected_word: expectedText || null,
+          expected_sound: expectedText ? extractExpectedSound(expectedText) : null,
+          transcribed_word:
+            typeof sodaResponse.predicted === 'string' ? sodaResponse.predicted : null,
+          error_type:
+            typeof sodaResponse.error_type === 'string' ? sodaResponse.error_type : null,
+          confidence,
+          game_type: gameType,
+          word_id: wordId ?? null,
+          attempt_number: attempt ?? null,
+          game_level: gameLevelUsed ?? null,
+          analysis_model: model,
+        };
+        await recordSpeechOutcome(
+          userId,
+          isCorrect,
+          boundedSeverity,
+          requestId,
+          speechLevelBefore,
+          isKidAttempt,
+          attemptDetail,
+        );
         if (speechLevelAfter !== speechLevelBefore) {
           await persistUserSpeechLevel(userId, speechLevelAfter, requestId);
         }
