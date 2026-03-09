@@ -11,6 +11,8 @@ import profileRoutes from './routes/profile';
 import notificationRoutes from './routes/notifications';
 import notificationPreferencesRoutes from './routes/notification_preferences';
 import evaluationRoutes from './routes/evaluation';
+import gamesRoutes from './routes/games';
+import voiceAgentRoutes from './routes/voice_agent';
 import { startNotificationScheduler } from './services/notification_scheduler';
 
 const app = express();
@@ -23,7 +25,7 @@ app.use(express.urlencoded({ extended: true }));
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
-  res.json({ message: 'Welcome to Teratalk Backend API' });
+  res.json({ message: 'Welcome to Teratalk Backend API Azure test' });
 });
 
 app.get('/health', (req: Request, res: Response) => {
@@ -47,6 +49,12 @@ app.use('/api/notification-preferences', notificationPreferencesRoutes);
 
 // Evaluation routes
 app.use('/api/evaluation', evaluationRoutes);
+
+// Game routes
+app.use('/api/games', gamesRoutes);
+
+// Voice agent routes
+app.use('/api/voice-agent', voiceAgentRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {

@@ -274,6 +274,14 @@ router.post('/refresh', async (req: Request, res: Response) => {
       res.status(401).json(errorResponse);
       return;
     }
+    if (!data.user) {
+      const errorResponse: ErrorResponse = {
+        error: 'Token refresh failed',
+        message: 'Failed to load user data for refreshed session',
+      };
+      res.status(500).json(errorResponse);
+      return;
+    }
 
     // Return new tokens
     const authResponse: AuthResponse = {
