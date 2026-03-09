@@ -13,6 +13,7 @@ import notificationPreferencesRoutes from './routes/notification_preferences';
 import evaluationRoutes from './routes/evaluation';
 import gamesRoutes from './routes/games';
 import voiceAgentRoutes from './routes/voice_agent';
+import journalRoutes from './routes/journal';
 import { startNotificationScheduler } from './services/notification_scheduler';
 
 const app = express();
@@ -56,6 +57,9 @@ app.use('/api/games', gamesRoutes);
 // Voice agent routes
 app.use('/api/voice-agent', voiceAgentRoutes);
 
+// Journal routes
+app.use('/api/journal', journalRoutes);
+
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {
   console.error('Unhandled error:', err);
@@ -66,7 +70,7 @@ app.use((err: Error, req: Request, res: Response, next: express.NextFunction) =>
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  
+
   // Start notification scheduler
   try {
     startNotificationScheduler();
