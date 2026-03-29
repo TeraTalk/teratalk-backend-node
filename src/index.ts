@@ -14,6 +14,7 @@ import evaluationRoutes from './routes/evaluation';
 import gamesRoutes from './routes/games';
 import voiceAgentRoutes from './routes/voice_agent';
 import journalRoutes from './routes/journal';
+import curriculumRoutes from './routes/curriculum';
 import { startNotificationScheduler } from './services/notification_scheduler';
 
 const app = express();
@@ -59,6 +60,9 @@ app.use('/api/voice-agent', voiceAgentRoutes);
 
 // Journal routes
 app.use('/api/journal', journalRoutes);
+
+// Curriculum routes
+app.use('/api/curriculum', curriculumRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {

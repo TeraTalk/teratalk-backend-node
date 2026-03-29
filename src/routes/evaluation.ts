@@ -504,6 +504,42 @@ router.get('/weekly-progress', authenticate, async (req: Request, res: Response)
   }
 });
 
+/// GET /api/evaluation/history
+/// Returns the full evaluation history for the Deep-Dive Analytics View
+router.get('/history', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userId;
+    if (!userId) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('user_speech_attempts')
+      .select('id, created_at, is_pass, severity, speech_level, is_kid_attempt, expected_word, expected_sound, transcribed_word, error_type, confidence, game_type, word_id, attempt_number, game_level, analysis_model')
+      .eq('user_id', userId)
+      .eq('is_kid_attempt', true)
+      .order('created_at', { ascending: false })
+      .limit(100); // Fetch the last 100 attempts for analysis
+
+    if (error) {
+      console.warn('[Evaluation][History] Failed to load history', {
+        userId,
+        message: error.message,
+      });
+      res.status(500).json({ error: 'Failed to load history data' });
+      return;
+    }
+
+    res.status(200).json(data ?? []);
+  } catch (err) {
+    console.warn('[Evaluation][History] Error', {
+      message: err instanceof Error ? err.message : String(err),
+    });
+    res.status(500).json({ error: 'Failed to fetch history data' });
+  }
+});
+
 /// POST /api/evaluation/analyze
 /// Analyzes a word pronunciation with audio file
 /// Can work with or without authentication for Postman testing
