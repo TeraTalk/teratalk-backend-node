@@ -1,8 +1,22 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { GameWordsService } from '../services/game_words_service';
+import { computeCandyLandMove } from '../services/candy_land_movement_policy';
+import {
+  CandyLandMoveTilesRequest,
+  CandyLandMoveTilesResponse,
+} from '../types/candy_land';
 
 const router = Router();
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string') {
+    const parsed = parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
 
 function parseLevel(raw: unknown): number {
   const parsed =
@@ -97,5 +111,73 @@ router.get('/words/next', authenticate, async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+/// POST /api/games/candy-land/move-tiles
+/// Converts a speech analysis result into Candy Land move tiles.
+router.post(
+  '/candy-land/move-tiles',
+  authenticate,
+  async (req: Request, res: Response<CandyLandMoveTilesResponse>) => {
+    try {
+      const requestId = `candy_move_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      if (!req.userId) {
+        res.status(401).json({
+          moveTiles: 0,
+          qualityScore: 0,
+          reason: 'fail_no_move',
+          severityThresholdUsed: null,
+          allowRetry: true,
+          animation: { stepDelayMs: 180, celebration: false },
+        });
+        return;
+      }
+
+      const body = (req.body ?? {}) as CandyLandMoveTilesRequest;
+      const severity =
+        toNumber(body.severity) ??
+        toNumber(body.severity_text) ??
+        toNumber(body.severity_phoneme);
+      const confidence = toNumber(body.confidence);
+      const isCorrect =
+        typeof body.is_correct === 'boolean' ? body.is_correct : null;
+      const gameLevelUsed = body.gameLevelUsed != null ? parseLevel(body.gameLevelUsed) : 2;
+      const speechLevelUsed = body.speechLevelUsed ?? 'beginner';
+
+      console.log('[Games][CandyLandMoveTiles] Request received', {
+        requestId,
+        userId: req.userId,
+        severity: severity ?? null,
+        confidence: confidence ?? null,
+        is_correct: isCorrect,
+        gameLevelUsed,
+        speechLevelUsed,
+      });
+
+      const result = computeCandyLandMove({
+        severity,
+        confidence,
+        isCorrect,
+        gameLevelUsed,
+        speechLevelUsed,
+      });
+
+      res.status(200).json(result);
+      
+    } catch (error) {
+      console.error('[Games][CandyLandMoveTiles] Error', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+      });
+      res.status(500).json({
+        moveTiles: 0,
+        qualityScore: 0,
+        reason: 'fail_no_move',
+        severityThresholdUsed: null,
+        allowRetry: true,
+        animation: { stepDelayMs: 180, celebration: false },
+      });
+    }
+  }
+);
 
 export default router;
