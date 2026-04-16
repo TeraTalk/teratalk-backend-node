@@ -88,7 +88,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     if (error) {
       console.error('Registration error:', error);
-      
+
       // Handle specific Supabase errors
       if (error.message.includes('already registered') || error.message.includes('already exists')) {
         const errorResponse: ErrorResponse = {
@@ -174,11 +174,11 @@ router.post('/login', async (req: Request, res: Response) => {
 
     if (error) {
       console.error('Login error:', error);
-      
+
       // Handle specific Supabase errors
-      if (error.message.includes('Invalid login credentials') || 
-          error.message.includes('Invalid password') ||
-          error.message.includes('Email not confirmed')) {
+      if (error.message.includes('Invalid login credentials') ||
+        error.message.includes('Invalid password') ||
+        error.message.includes('Email not confirmed')) {
         const errorResponse: ErrorResponse = {
           error: 'Invalid credentials',
           message: 'Invalid email or password. Please try again.',
@@ -232,14 +232,14 @@ router.post('/login', async (req: Request, res: Response) => {
 router.post('/logout', async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(200).json({ message: 'Logged out successfully' });
       return;
     }
 
     const token = authHeader.substring(7);
-    
+
     // Sign out the user session
     const { error } = await supabase.auth.signOut();
 
