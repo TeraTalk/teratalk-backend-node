@@ -24,7 +24,16 @@ function isValidPassword(password: string): boolean {
 /// POST /api/auth/register - Register new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, fullName }: RegisterRequest = req.body;
+    const { email, password, fullName, role = 'guardian' }: RegisterRequest = req.body;
+
+    if (role !== 'guardian' && role !== 'therapist') {
+      const errorResponse: ErrorResponse = {
+        error: 'Invalid role',
+        message: 'Role must be either guardian or therapist',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
 
     // Validation
     if (!email || !password || !fullName) {
@@ -72,6 +81,7 @@ router.post('/register', async (req: Request, res: Response) => {
       options: {
         data: {
           full_name: fullName.trim(),
+          role: role,
         },
       },
     });
@@ -115,6 +125,7 @@ router.post('/register', async (req: Request, res: Response) => {
         id: data.user.id,
         email: data.user.email || email,
         fullName: data.user.user_metadata?.full_name || fullName.trim(),
+        role: data.user.user_metadata?.role || role,
       },
     };
 
@@ -202,6 +213,7 @@ router.post('/login', async (req: Request, res: Response) => {
         id: data.user.id,
         email: data.user.email || email,
         fullName: data.user.user_metadata?.full_name,
+        role: data.user.user_metadata?.role,
       },
     };
 
@@ -292,6 +304,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
         id: data.user.id,
         email: data.user.email || '',
         fullName: data.user.user_metadata?.full_name,
+        role: data.user.user_metadata?.role,
       },
     };
 
