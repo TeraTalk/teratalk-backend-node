@@ -101,6 +101,7 @@ router.get('/words/next', authenticate, async (req: Request, res: Response) => {
         matchedSound: firstMeta?.matchedSound ?? null,
         fallbackUsed: firstMeta?.fallbackUsed ?? true,
         source: result.source,
+        mlModelVersion: result.mlModelVersion ?? null,
       },
     });
   } catch (error) {

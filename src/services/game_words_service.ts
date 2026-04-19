@@ -1,4 +1,5 @@
 import { supabase } from '../config/supabase';
+import { isMlHintsEnabled, isMlWordsEnabled, mlPredictHint, mlSelectWord } from './ml_service_client';
 
 type TherapyItemRow = {
   id: string;
@@ -25,6 +26,8 @@ export type GameWord = {
     emojiHint?: string;
   };
   difficulty: number;
+  /** Optional ML template hint for “say the word” UI */
+  hintText?: string;
 };
 
 export type WordSelectionMeta = {
@@ -37,7 +40,49 @@ export type WordSelectionResult = {
   words: Array<GameWord & { meta: WordSelectionMeta }>;
   requestedLevel: number;
   source: 'exact' | 'nearby' | 'global_fallback';
+  /** Set when LinUCB bandit reordered candidates */
+  mlModelVersion?: string;
 };
+
+const ML_CANDIDATE_CAP = 40;
+
+async function applyBanditReorder(params: {
+  userId: string;
+  words: Array<GameWord & { meta: WordSelectionMeta }>;
+  source: 'exact' | 'nearby' | 'global_fallback';
+  requestedLevel: number;
+  numProblemSounds: number;
+  limit: number;
+}): Promise<{ words: Array<GameWord & { meta: WordSelectionMeta }>; mlModelVersion?: string }> {
+  const { userId, words, source, requestedLevel, numProblemSounds, limit } = params;
+  if (!isMlWordsEnabled() || words.length <= 1) {
+    return { words: words.slice(0, limit) };
+  }
+
+  const chosen = await mlSelectWord({
+    userId,
+    candidateWordIds: words.map((w) => w.id),
+    requestedLevel,
+    numProblemSounds,
+    source,
+  });
+  if (!chosen?.chosen_word_id) {
+    return { words: words.slice(0, limit) };
+  }
+
+  const idx = words.findIndex((w) => w.id === chosen.chosen_word_id);
+  if (idx < 0) {
+    return { words: words.slice(0, limit) };
+  }
+
+  const chosenWord = words[idx];
+  const rest = words.filter((_, i) => i !== idx);
+  const reordered = [chosenWord, ...rest];
+  return {
+    words: reordered.slice(0, limit),
+    mlModelVersion: chosen.model_version,
+  };
+}
 
 function clampDifficulty(level: number): number {
   return Math.max(1, Math.min(10, Math.round(level)));
@@ -245,6 +290,30 @@ function pickWords(params: {
   return words;
 }
 
+type GameWordWithMeta = GameWord & { meta: WordSelectionMeta };
+
+async function attachPracticeHints(words: GameWordWithMeta[]): Promise<GameWordWithMeta[]> {
+  if (!isMlHintsEnabled() || words.length === 0) {
+    return words;
+  }
+  const out: GameWordWithMeta[] = [];
+  for (const w of words) {
+    const hintMl = await mlPredictHint({
+      expectedWord: w.text,
+      expectedSound: w.letter,
+      hintTone: 'light',
+      attempt: 1,
+      severity: null,
+    });
+    if (hintMl?.hint_text) {
+      out.push({ ...w, hintText: hintMl.hint_text });
+    } else {
+      out.push({ ...w });
+    }
+  }
+  return out;
+}
+
 export class GameWordsService {
   static async getNextWords(params: {
     userId: string;
@@ -254,6 +323,7 @@ export class GameWordsService {
   }): Promise<WordSelectionResult> {
     const requestId = `svc_words_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
     const limit = Math.max(1, Math.min(10, Math.round(params.limit)));
+    const pickLimit = isMlWordsEnabled() ? Math.max(limit, ML_CANDIDATE_CAP) : limit;
     const excludedWordIds = new Set(params.excludeWordIds || []);
     const availableLevels = await fetchAvailableWordPracticeLevels();
     const requestedLevel = pickClosestLevel(params.level, availableLevels);
@@ -279,7 +349,7 @@ export class GameWordsService {
         activities: exactActivities,
         requestedLevel,
         excludedWordIds,
-        limit,
+        limit: pickLimit,
         fallbackUsed: false,
       });
       console.log('[GameWordsService] Exact-level attempt', {
@@ -288,14 +358,30 @@ export class GameWordsService {
         wordsCount: exactWords.length,
       });
       if (exactWords.length > 0) {
+        const { words: finalWords, mlModelVersion } = await applyBanditReorder({
+          userId: params.userId,
+          words: exactWords,
+          source: 'exact',
+          requestedLevel,
+          numProblemSounds: problemSounds.length,
+          limit,
+        });
+        const hintedWords = await attachPracticeHints(finalWords);
         console.log('[GameWordsService] Selected exact-level words', {
           requestId,
           source: 'exact',
-          wordsCount: exactWords.length,
-          firstWordId: exactWords[0]?.id ?? null,
-          firstWordText: exactWords[0]?.text ?? null,
+          wordsCount: hintedWords.length,
+          firstWordId: hintedWords[0]?.id ?? null,
+          firstWordText: hintedWords[0]?.text ?? null,
+          mlModelVersion: mlModelVersion ?? null,
+          firstHintLen: hintedWords[0]?.hintText?.length ?? 0,
         });
-        return { words: exactWords, requestedLevel, source: 'exact' };
+        return {
+          words: hintedWords,
+          requestedLevel,
+          source: 'exact',
+          mlModelVersion,
+        };
       }
 
       if (nearbyLevels.length > 0) {
@@ -307,7 +393,7 @@ export class GameWordsService {
           activities: nearbyActivities,
           requestedLevel,
           excludedWordIds,
-          limit,
+          limit: pickLimit,
           fallbackUsed: true,
         });
         console.log('[GameWordsService] Nearby-level attempt', {
@@ -317,14 +403,30 @@ export class GameWordsService {
           wordsCount: nearbyWords.length,
         });
         if (nearbyWords.length > 0) {
+          const { words: finalWords, mlModelVersion } = await applyBanditReorder({
+            userId: params.userId,
+            words: nearbyWords,
+            source: 'nearby',
+            requestedLevel,
+            numProblemSounds: problemSounds.length,
+            limit,
+          });
+          const hintedWords = await attachPracticeHints(finalWords);
           console.log('[GameWordsService] Selected nearby-level words', {
             requestId,
             source: 'nearby',
-            wordsCount: nearbyWords.length,
-            firstWordId: nearbyWords[0]?.id ?? null,
-            firstWordText: nearbyWords[0]?.text ?? null,
+            wordsCount: hintedWords.length,
+            firstWordId: hintedWords[0]?.id ?? null,
+            firstWordText: hintedWords[0]?.text ?? null,
+            mlModelVersion: mlModelVersion ?? null,
+            firstHintLen: hintedWords[0]?.hintText?.length ?? 0,
           });
-          return { words: nearbyWords, requestedLevel, source: 'nearby' };
+          return {
+            words: hintedWords,
+            requestedLevel,
+            source: 'nearby',
+            mlModelVersion,
+          };
         }
       }
     } else {
@@ -338,22 +440,34 @@ export class GameWordsService {
       activities: fallbackActivities,
       requestedLevel,
       excludedWordIds,
-      limit,
+      limit: pickLimit,
       fallbackUsed: true,
     });
+    const { words: finalFallback, mlModelVersion } = await applyBanditReorder({
+      userId: params.userId,
+      words: fallbackWords,
+      source: 'global_fallback',
+      requestedLevel,
+      numProblemSounds: problemSounds.length,
+      limit,
+    });
+    const hintedFallback = await attachPracticeHints(finalFallback);
     console.log('[GameWordsService] Global fallback selection', {
       requestId,
       source: 'global_fallback',
       activitiesCount: fallbackActivities.length,
-      wordsCount: fallbackWords.length,
-      firstWordId: fallbackWords[0]?.id ?? null,
-      firstWordText: fallbackWords[0]?.text ?? null,
+      wordsCount: hintedFallback.length,
+      firstWordId: hintedFallback[0]?.id ?? null,
+      firstWordText: hintedFallback[0]?.text ?? null,
+      mlModelVersion: mlModelVersion ?? null,
+      firstHintLen: hintedFallback[0]?.hintText?.length ?? 0,
     });
 
     return {
-      words: fallbackWords,
+      words: hintedFallback,
       requestedLevel,
       source: 'global_fallback',
+      mlModelVersion,
     };
   }
 }
