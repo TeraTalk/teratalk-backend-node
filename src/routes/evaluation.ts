@@ -144,11 +144,11 @@ async function persistUserSpeechLevel(
   }
 }
 
-async function getRecentSpeechOutcomes(
+async function getRecentSpeechAttemptStats(
   userId: string,
   speechLevel: SpeechLevel,
   requestId: string,
-): Promise<boolean[]> {
+): Promise<{ passOutcomes: boolean[]; meanSeverity: number | null }> {
   try {
     const limit = getHistoryWindowForLevel(speechLevel);
 
@@ -167,7 +167,7 @@ async function getRecentSpeechOutcomes(
 
     let query = supabase
       .from('user_speech_attempts')
-      .select('is_pass, created_at')
+      .select('is_pass, severity, created_at')
       .eq('user_id', userId)
       .eq('speech_level', speechLevel)
       .eq('is_kid_attempt', true)
@@ -187,19 +187,30 @@ async function getRecentSpeechOutcomes(
         speechLevel,
         message: error.message,
       });
-      return [];
+      return { passOutcomes: [], meanSeverity: null };
     }
 
-    return (data ?? [])
+    const rows = data ?? [];
+    const passOutcomes = rows
       .map((row) => (typeof row.is_pass === 'boolean' ? row.is_pass : null))
       .filter((outcome): outcome is boolean => outcome !== null);
+    const severities: number[] = [];
+    for (const row of rows) {
+      const s = toNumber(row.severity);
+      if (s !== null) severities.push(Math.max(0, Math.min(1, s)));
+    }
+    const meanSeverity =
+      severities.length > 0
+        ? severities.reduce((a, b) => a + b, 0) / severities.length
+        : null;
+    return { passOutcomes, meanSeverity };
   } catch (error) {
     console.warn('[Evaluation][Analyze] Unexpected speech attempt history error', {
       requestId,
       userId,
       message: error instanceof Error ? error.message : String(error),
     });
-    return [];
+    return { passOutcomes: [], meanSeverity: null };
   }
 }
 
@@ -746,13 +757,26 @@ router.post(
       let severityThresholdUsed = getSeverityThreshold(speechLevelBefore);
 
       if (userId) {
-        const historyBefore = await getRecentSpeechOutcomes(userId, speechLevelBefore, requestId);
+        const attemptStats = await getRecentSpeechAttemptStats(
+          userId,
+          speechLevelBefore,
+          requestId,
+        );
+        const historyBefore = attemptStats.passOutcomes;
+        const histPassRate =
+          historyBefore.length > 0
+            ? historyBefore.filter(Boolean).length / historyBefore.length
+            : null;
 
         if (isMlSpeechLevelEnabled()) {
           const mlSpeech = await mlPredictSpeechLevel({
             speechLevelBefore,
-            historyWithCurrent: [passBaseline, ...historyBefore],
+            historyBefore,
             severity: boundedSeverity,
+            age: context.age ?? null,
+            numProblemSounds: context.problemSounds?.length ?? 0,
+            histPassRate,
+            histMeanSeverity: attemptStats.meanSeverity,
           });
           if (mlSpeech) {
             isCorrect = mlSpeech.is_pass;

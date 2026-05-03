@@ -160,14 +160,23 @@ export type SpeechLevelMlResult = {
 
 export async function mlPredictSpeechLevel(params: {
   speechLevelBefore: string;
-  historyWithCurrent: boolean[];
+  /** Prior attempts at this speech level, most recent first. */
+  historyBefore: boolean[];
   severity: number | null;
+  age?: number | null;
+  numProblemSounds?: number;
+  histPassRate?: number | null;
+  histMeanSeverity?: number | null;
 }): Promise<SpeechLevelMlResult | null> {
   if (!isMlSpeechLevelEnabled()) return null;
   return postJson<SpeechLevelMlResult>('/v1/speech-level/predict', {
     speech_level_before: params.speechLevelBefore,
-    history_with_current: params.historyWithCurrent,
+    history_before: params.historyBefore,
     severity: params.severity,
+    age: params.age ?? null,
+    num_problem_sounds: params.numProblemSounds ?? 0,
+    hist_pass_rate: params.histPassRate ?? null,
+    hist_mean_severity: params.histMeanSeverity ?? null,
   });
 }
 
