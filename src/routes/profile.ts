@@ -199,17 +199,34 @@ router.put('/', authenticate, async (req: Request, res: Response) => {
       updateData.speech_level_set_at = new Date().toISOString();
     }
 
-    // Update profile in Supabase
-    const { data: updatedProfile, error: updateError } = await supabase
+    if (Object.keys(updateData).length === 0) {
+      res.status(400).json({
+        error: 'No supported fields to update (childName, problemSounds, caregiverSchedule, speechLevel)',
+      });
+      return;
+    }
+
+    // Update profile in Supabase (.single() yields PGRST116 when zero rows matched)
+    const { data: updatedRows, error: updateError } = await supabase
       .from('user_profiles')
       .update(updateData)
       .eq('user_id', userId)
-      .select()
-      .single();
+      .select();
 
     if (updateError) {
       console.error('Error updating profile:', updateError);
       res.status(500).json({ error: 'Failed to update user profile' });
+      return;
+    }
+
+    const updatedProfile = updatedRows?.[0];
+    if (!updatedProfile) {
+      console.error(
+        'Profile update affected 0 rows (check user_profiles.user_id matches auth user and SUPABASE_SERVICE_ROLE_KEY)'
+      );
+      res.status(404).json({
+        error: 'Profile not found. Please complete onboarding first.',
+      });
       return;
     }
 
