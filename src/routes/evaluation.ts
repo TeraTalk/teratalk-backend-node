@@ -15,6 +15,14 @@ import {
   SpeechLevel,
 } from '../config/speech_level_policy';
 import {
+  isMlHintsEnabled,
+  isMlSpeechLevelEnabled,
+  isMlWordsEnabled,
+  mlPredictHint,
+  mlPredictSpeechLevel,
+  mlRecordBanditReward,
+} from '../services/ml_service_client';
+import {
   EvaluationAnalyzeRequest,
   EvaluationResponse,
   EvaluationSession,
@@ -690,13 +698,37 @@ router.post(
         toNumber(sodaResponse.severity_phoneme);
       const boundedSeverity =
         severity === null ? null : Math.max(0, Math.min(1, severity));
-      const severityThresholdUsed = getSeverityThreshold(speechLevelBefore);
       const sodaIsCorrect =
         typeof sodaResponse.is_correct === 'boolean' ? sodaResponse.is_correct : null;
-      const isCorrect =
+      const passBaseline =
         boundedSeverity !== null
           ? isPassForLevel(speechLevelBefore, boundedSeverity)
           : (sodaIsCorrect ?? false);
+
+      let gamePersonalizationOut: Record<string, unknown> = { ...gamePersonalization };
+      if (isMlHintsEnabled()) {
+        const hintMl = await mlPredictHint({
+          expectedWord: expectedText,
+          expectedSound: extractExpectedSound(expectedText),
+          hintTone: gamePersonalization.hintTone,
+          attempt: attempt ?? 1,
+          severity: boundedSeverity,
+        });
+        if (hintMl?.hint_text) {
+          gamePersonalizationOut = { ...gamePersonalizationOut, hintText: hintMl.hint_text };
+          console.log('[Evaluation][Analyze] ML hint attached', {
+            requestId,
+            templateId: hintMl.template_id,
+            hintLen: hintMl.hint_text.length,
+            hintPreview: hintMl.hint_text.slice(0, 80),
+          });
+        } else {
+          console.log('[Evaluation][Analyze] ML hint skipped', {
+            requestId,
+            reason: hintMl ? 'empty hint_text' : 'mlPredictHint returned null',
+          });
+        }
+      }
 
       const rawConfidence =
         typeof sodaResponse.confidence === 'number' && Number.isFinite(sodaResponse.confidence)
@@ -709,13 +741,36 @@ router.post(
             ? Math.max(0, Math.min(1, 1 - boundedSeverity))
             : null;
 
-      let speechLevelAfter = speechLevelBefore;
+      let isCorrect = passBaseline;
+      let speechLevelAfter: SpeechLevel = speechLevelBefore;
+      let severityThresholdUsed = getSeverityThreshold(speechLevelBefore);
+
       if (userId) {
         const historyBefore = await getRecentSpeechOutcomes(userId, speechLevelBefore, requestId);
-        speechLevelAfter = nextSpeechLevelFromHistory(speechLevelBefore, [
-          isCorrect,
-          ...historyBefore,
-        ]);
+
+        if (isMlSpeechLevelEnabled()) {
+          const mlSpeech = await mlPredictSpeechLevel({
+            speechLevelBefore,
+            historyWithCurrent: [passBaseline, ...historyBefore],
+            severity: boundedSeverity,
+          });
+          if (mlSpeech) {
+            isCorrect = mlSpeech.is_pass;
+            speechLevelAfter = normalizeSpeechLevel(mlSpeech.speech_level_after) as SpeechLevel;
+            severityThresholdUsed = mlSpeech.severity_threshold_used;
+          } else {
+            speechLevelAfter = nextSpeechLevelFromHistory(speechLevelBefore, [
+              passBaseline,
+              ...historyBefore,
+            ]);
+          }
+        } else {
+          speechLevelAfter = nextSpeechLevelFromHistory(speechLevelBefore, [
+            passBaseline,
+            ...historyBefore,
+          ]);
+        }
+
         const attemptDetail: SpeechAttemptDetail = {
           expected_word: expectedText || null,
           expected_sound: expectedText ? extractExpectedSound(expectedText) : null,
@@ -739,6 +794,23 @@ router.post(
           isKidAttempt,
           attemptDetail,
         );
+
+        if (isMlWordsEnabled() && wordId) {
+          const reward = isCorrect
+            ? 1
+            : boundedSeverity != null
+              ? Math.max(0, 1 - boundedSeverity)
+              : 0;
+          void mlRecordBanditReward({
+            userId,
+            wordId,
+            reward,
+            requestedLevel: gameLevelUsed ?? MIN_GAME_LEVEL,
+            numProblemSounds: context.problemSounds?.length ?? 0,
+            source: 'global_fallback',
+          });
+        }
+
         if (speechLevelAfter !== speechLevelBefore) {
           await persistUserSpeechLevel(userId, speechLevelAfter, requestId);
         }
@@ -755,13 +827,13 @@ router.post(
         is_correct: isCorrect,
         speechLevelBefore,
         speechLevelAfter,
-        gamePersonalization,
+        gamePersonalization: gamePersonalizationOut,
         gameLevelUsed,
       });
       res.json({
         ...sodaResponse,
         is_correct: isCorrect,
-        gamePersonalization,
+        gamePersonalization: gamePersonalizationOut,
         effectiveLevel: gameLevelUsed,
         gameLevelUsed,
         speechLevelUsed: speechLevelBefore,

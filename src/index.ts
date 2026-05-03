@@ -18,6 +18,12 @@ import curriculumRoutes from './routes/curriculum';
 import therapistsRoutes from './routes/therapists';
 import bookingsRoutes from './routes/bookings';
 import { startNotificationScheduler } from './services/notification_scheduler';
+import {
+  getMlServiceBaseUrlForLogs,
+  isMlHintsEnabled,
+  isMlSpeechLevelEnabled,
+  isMlWordsEnabled,
+} from './services/ml_service_client';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -82,6 +88,17 @@ app.use((err: Error, req: Request, res: Response, next: express.NextFunction) =>
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+
+  const mlBase = getMlServiceBaseUrlForLogs();
+  if (mlBase) {
+    console.log('[ML] ML_SERVICE_URL resolved to:', mlBase, {
+      words: isMlWordsEnabled(),
+      speechLevel: isMlSpeechLevelEnabled(),
+      hints: isMlHintsEnabled(),
+    });
+  } else {
+    console.log('[ML] ML_SERVICE_URL not set — ML integration disabled');
+  }
 
   // Start notification scheduler
   try {
