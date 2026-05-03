@@ -4,6 +4,7 @@ export interface RegisterRequest {
   email: string;
   password: string;
   fullName: string;
+  role?: 'guardian' | 'therapist';
 }
 
 export interface LoginRequest {
@@ -23,6 +24,7 @@ export interface AuthResponse {
     id: string;
     email: string;
     fullName?: string;
+    role?: string;
   };
 }
 

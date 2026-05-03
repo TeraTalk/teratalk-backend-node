@@ -177,7 +177,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
     if (insertError) {
       console.error('Error creating profile:', insertError);
-      res.status(500).json({ error: 'Failed to create user profile' });
+      res.status(500).json({ error: 'Failed to create user profile' + insertError });
       return;
     }
 

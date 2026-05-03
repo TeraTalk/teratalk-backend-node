@@ -15,6 +15,8 @@ import gamesRoutes from './routes/games';
 import voiceAgentRoutes from './routes/voice_agent';
 import journalRoutes from './routes/journal';
 import curriculumRoutes from './routes/curriculum';
+import therapistsRoutes from './routes/therapists';
+import bookingsRoutes from './routes/bookings';
 import { startNotificationScheduler } from './services/notification_scheduler';
 
 const app = express();
@@ -22,8 +24,8 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // Routes
 app.get('/', (req: Request, res: Response) => {
@@ -63,6 +65,12 @@ app.use('/api/journal', journalRoutes);
 
 // Curriculum routes
 app.use('/api/curriculum', curriculumRoutes);
+
+// Therapist routes
+app.use('/api/therapists', therapistsRoutes);
+
+// Booking routes
+app.use('/api/bookings', bookingsRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: Request, res: Response, next: express.NextFunction) => {

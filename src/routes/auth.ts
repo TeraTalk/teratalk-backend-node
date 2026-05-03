@@ -24,7 +24,16 @@ function isValidPassword(password: string): boolean {
 /// POST /api/auth/register - Register new user
 router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { email, password, fullName }: RegisterRequest = req.body;
+    const { email, password, fullName, role = 'guardian' }: RegisterRequest = req.body;
+
+    if (role !== 'guardian' && role !== 'therapist') {
+      const errorResponse: ErrorResponse = {
+        error: 'Invalid role',
+        message: 'Role must be either guardian or therapist',
+      };
+      res.status(400).json(errorResponse);
+      return;
+    }
 
     // Validation
     if (!email || !password || !fullName) {
@@ -72,13 +81,14 @@ router.post('/register', async (req: Request, res: Response) => {
       options: {
         data: {
           full_name: fullName.trim(),
+          role: role,
         },
       },
     });
 
     if (error) {
       console.error('Registration error:', error);
-      
+
       // Handle specific Supabase errors
       if (error.message.includes('already registered') || error.message.includes('already exists')) {
         const errorResponse: ErrorResponse = {
@@ -115,6 +125,7 @@ router.post('/register', async (req: Request, res: Response) => {
         id: data.user.id,
         email: data.user.email || email,
         fullName: data.user.user_metadata?.full_name || fullName.trim(),
+        role: data.user.user_metadata?.role || role,
       },
     };
 
@@ -163,11 +174,11 @@ router.post('/login', async (req: Request, res: Response) => {
 
     if (error) {
       console.error('Login error:', error);
-      
+
       // Handle specific Supabase errors
-      if (error.message.includes('Invalid login credentials') || 
-          error.message.includes('Invalid password') ||
-          error.message.includes('Email not confirmed')) {
+      if (error.message.includes('Invalid login credentials') ||
+        error.message.includes('Invalid password') ||
+        error.message.includes('Email not confirmed')) {
         const errorResponse: ErrorResponse = {
           error: 'Invalid credentials',
           message: 'Invalid email or password. Please try again.',
@@ -202,6 +213,7 @@ router.post('/login', async (req: Request, res: Response) => {
         id: data.user.id,
         email: data.user.email || email,
         fullName: data.user.user_metadata?.full_name,
+        role: data.user.user_metadata?.role,
       },
     };
 
@@ -220,14 +232,14 @@ router.post('/login', async (req: Request, res: Response) => {
 router.post('/logout', async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       res.status(200).json({ message: 'Logged out successfully' });
       return;
     }
 
     const token = authHeader.substring(7);
-    
+
     // Sign out the user session
     const { error } = await supabase.auth.signOut();
 
@@ -292,6 +304,7 @@ router.post('/refresh', async (req: Request, res: Response) => {
         id: data.user.id,
         email: data.user.email || '',
         fullName: data.user.user_metadata?.full_name,
+        role: data.user.user_metadata?.role,
       },
     };
 
