@@ -1,8 +1,8 @@
 export type SpeechLevel = 'beginner' | 'intermediate' | 'advanced';
 
 export const SPEECH_LEVEL_THRESHOLDS: Record<SpeechLevel, number> = {
-  beginner: 0.5,
-  intermediate: 0.35,
+  beginner: 0.65,
+  intermediate: 0.4,
   advanced: 0.2,
 };
 

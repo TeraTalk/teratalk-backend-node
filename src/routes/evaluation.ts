@@ -396,14 +396,14 @@ function buildGamePersonalization(
   let hintTone: 'light' | 'supportive' | 'direct';
   if (boundedSeverity === null || boundedSeverity <= 0.35) {
     hintTone = 'light';
-  } else if (boundedSeverity <= 0.7) {
+  } else if (boundedSeverity <= 0.65) {
     hintTone = 'supportive';
   } else {
     hintTone = 'direct';
   }
 
   const allowRetry =
-    boundedSeverity === null || (boundedSeverity <= 0.7 && attempt < 3);
+    boundedSeverity === null || (boundedSeverity <= 0.65 && attempt < 3);
 
   const suggestGuardianAssist =
     playerMode === 'with_guardian' &&
