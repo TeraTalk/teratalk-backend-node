@@ -1,9 +1,18 @@
 import { Router, Request, Response } from 'express';
 import { uploadAudio } from '../middleware/upload';
 import { authenticate } from '../middleware/auth';
-import { SodaService } from '../services/soda_service';
+import {
+  buildSodaAnalysisSnapshot,
+  extractSodaErrorTypeLabel,
+  extractSodaTranscribedWord,
+  SodaService,
+} from '../services/soda_service';
 import { PhonologicalDetectorService } from '../services/phonological_detector_service';
-import { mapPhonologicalToSodaLike } from '../services/speech_analysis_normalizer';
+import {
+  buildPhonologicalAnalysisSnapshot,
+  coerceSeverity01,
+  mapPhonologicalToSodaLike,
+} from '../services/speech_analysis_normalizer';
 import { PersonalizationService } from '../services/personalization_service';
 import { supabase } from '../config/supabase';
 import {
@@ -226,6 +235,10 @@ export type SpeechAttemptDetail = {
   attempt_number?: number | null;
   game_level?: number | null;
   analysis_model?: string | null;
+  /** Phonological detector payload; omitted for SODA attempts */
+  phonological_analysis?: Record<string, unknown> | null;
+  /** SODA analyzer payload; omitted for phonological attempts */
+  soda_analysis?: Record<string, unknown> | null;
 };
 
 async function recordSpeechOutcome(
@@ -256,6 +269,12 @@ async function recordSpeechOutcome(
       if (detail.attempt_number !== undefined) row.attempt_number = detail.attempt_number;
       if (detail.game_level !== undefined) row.game_level = detail.game_level;
       if (detail.analysis_model !== undefined) row.analysis_model = detail.analysis_model;
+      if (detail.phonological_analysis !== undefined) {
+        row.phonological_analysis = detail.phonological_analysis;
+      }
+      if (detail.soda_analysis !== undefined) {
+        row.soda_analysis = detail.soda_analysis;
+      }
     }
     const { error } = await supabase.from('user_speech_attempts').insert(row);
 
@@ -401,16 +420,7 @@ function buildGamePersonalization(
 }
 
 function toSodaResponse(sodaResponse: Record<string, any>) {
-  const severityRaw = sodaResponse.severity;
-  const severity =
-    typeof severityRaw === 'number'
-      ? severityRaw
-      : typeof severityRaw === 'string'
-        ? parseFloat(severityRaw)
-        : NaN;
-  const safeSeverity = Number.isFinite(severity)
-    ? Math.max(0, Math.min(1, severity))
-    : 0.5;
+  const safeSeverity = coerceSeverity01(sodaResponse.severity);
 
   // Use API confidence when present (e.g. phonological new structure), else derive from severity
   const rawConfidence =
@@ -535,7 +545,7 @@ router.get('/history', authenticate, async (req: Request, res: Response) => {
 
     const { data, error } = await supabase
       .from('user_speech_attempts')
-      .select('id, created_at, is_pass, severity, speech_level, is_kid_attempt, expected_word, expected_sound, transcribed_word, error_type, confidence, game_type, word_id, attempt_number, game_level, analysis_model')
+      .select('id, created_at, is_pass, severity, speech_level, is_kid_attempt, expected_word, expected_sound, transcribed_word, error_type, confidence, game_type, word_id, attempt_number, game_level, analysis_model, phonological_analysis, soda_analysis')
       .eq('user_id', userId)
       .eq('is_kid_attempt', true)
       .order('created_at', { ascending: false })
@@ -799,16 +809,27 @@ router.post(
         const attemptDetail: SpeechAttemptDetail = {
           expected_word: expectedText || null,
           expected_sound: expectedText ? extractExpectedSound(expectedText) : null,
-          transcribed_word:
-            typeof sodaResponse.predicted === 'string' ? sodaResponse.predicted : null,
+          transcribed_word: extractSodaTranscribedWord(sodaResponse as Record<string, unknown>),
           error_type:
-            typeof sodaResponse.error_type === 'string' ? sodaResponse.error_type : null,
+            model === 'phonological'
+              ? typeof sodaResponse.error_type === 'string'
+                ? sodaResponse.error_type
+                : null
+              : extractSodaErrorTypeLabel(sodaResponse as Record<string, unknown>),
           confidence,
           game_type: gameType,
           word_id: wordId ?? null,
           attempt_number: attempt ?? null,
           game_level: gameLevelUsed ?? null,
           analysis_model: model,
+          phonological_analysis:
+            model === 'phonological'
+              ? buildPhonologicalAnalysisSnapshot(sodaResponse as Record<string, unknown>)
+              : undefined,
+          soda_analysis:
+            model === 'soda'
+              ? buildSodaAnalysisSnapshot(sodaResponse as Record<string, unknown>)
+              : undefined,
         };
         await recordSpeechOutcome(
           userId,

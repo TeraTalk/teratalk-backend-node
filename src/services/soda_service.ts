@@ -161,3 +161,58 @@ export class SodaService {
     return normalized;
   }
 }
+
+/// Fields to store in `user_speech_attempts.soda_analysis` (jsonb). Omits top-level
+/// `severity` / `predicted` / `predicted_word` where they duplicate table columns.
+const SODA_ANALYSIS_SNAPSHOT_KEYS = [
+  'acoustic_severity',
+  'articulation_errors',
+  'pronunciation_quality_combined',
+  'severity_phoneme',
+  'severity_phoneme_combined',
+  'severity_phoneme_strict',
+  'severity_phoneme_strict_combined',
+  'severity_text',
+  'severity_text_combined',
+  'soda_errors',
+  'tongue_position_analysis',
+] as const;
+
+/** JSON-serializable SODA diagnostics for DB storage, or null if nothing to store. */
+export function buildSodaAnalysisSnapshot(
+  resp: Record<string, unknown>
+): Record<string, unknown> | null {
+  const out: Record<string, unknown> = {};
+  for (const key of SODA_ANALYSIS_SNAPSHOT_KEYS) {
+    if (!(key in resp)) continue;
+    const v = resp[key];
+    if (v !== undefined && v !== null) {
+      out[key] = v;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null;
+}
+
+/** Heard word for reporting: prefers `predicted`, then `predicted_word`. */
+export function extractSodaTranscribedWord(resp: Record<string, unknown>): string | null {
+  const p = resp.predicted;
+  if (typeof p === 'string' && p.trim().length > 0) return p;
+  const w = resp.predicted_word;
+  if (typeof w === 'string' && w.trim().length > 0) return w;
+  return null;
+}
+
+/** Therapy label from top-level `error_type` or nested `soda_errors`. */
+export function extractSodaErrorTypeLabel(resp: Record<string, unknown>): string | null {
+  const top = resp.error_type;
+  if (typeof top === 'string' && top.trim().length > 0) return top;
+  const se = resp.soda_errors;
+  if (se && typeof se === 'object' && !Array.isArray(se)) {
+    const o = se as Record<string, unknown>;
+    const primary = o.primary_error_type;
+    if (typeof primary === 'string' && primary.trim().length > 0) return primary;
+    const base = o.base_soda_error;
+    if (typeof base === 'string' && base.trim().length > 0) return base;
+  }
+  return null;
+}
