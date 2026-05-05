@@ -40,9 +40,14 @@ router.put('/', authenticate, async (req: Request, res: Response) => {
 
     // Validate request
     if (request.enabled === undefined && !request.notificationTimes) {
-      res.status(400).json({
-        error: 'Missing required fields',
-        message: 'Either enabled or notificationTimes must be provided',
+      // Notification preferences are optional; treat empty payload as no-op.
+      const preferences = await preferencesService.getPreferences(userId);
+      res.status(200).json({
+        success: true,
+        optionalSkipped: true,
+        message: 'Notification preferences update skipped (optional)',
+        enabled: preferences.enabled,
+        notificationTimes: preferences.notificationTimes,
       });
       return;
     }
@@ -56,11 +61,40 @@ router.put('/', authenticate, async (req: Request, res: Response) => {
         notificationTimes: result.preferences?.notificationTimes,
       });
     } else {
-      res.status(400).json({ error: result.error || 'Failed to update notification preferences' });
+      // Notification preferences are optional; fail-open so auth/onboarding won't be blocked.
+      const preferences = await preferencesService.getPreferences(userId);
+      res.status(200).json({
+        success: true,
+        optionalSkipped: true,
+        message: 'Notification preferences update skipped (optional)',
+        warning: result.error || 'Failed to update notification preferences',
+        enabled: preferences.enabled,
+        notificationTimes: preferences.notificationTimes,
+      });
     }
   } catch (error) {
     console.error('Error updating notification preferences:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    // Notification preferences are optional; fail-open to avoid blocking onboarding/sign-in.
+    const userId = req.userId;
+    if (!userId) {
+      res.status(200).json({
+        success: true,
+        optionalSkipped: true,
+        message: 'Notification preferences update skipped (optional)',
+        warning: 'Internal server error',
+      });
+      return;
+    }
+
+    const preferences = await preferencesService.getPreferences(userId);
+    res.status(200).json({
+      success: true,
+      optionalSkipped: true,
+      message: 'Notification preferences update skipped (optional)',
+      warning: 'Internal server error',
+      enabled: preferences.enabled,
+      notificationTimes: preferences.notificationTimes,
+    });
   }
 });
 

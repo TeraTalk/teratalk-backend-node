@@ -54,11 +54,23 @@ router.post('/register', authenticate, async (req: Request, res: Response) => {
     if (result.success) {
       res.status(200).json({ success: true, message: 'Device registered successfully' });
     } else {
-      res.status(500).json({ error: result.error || 'Failed to register device' });
+      // Notifications are optional: never block auth/onboarding flows on device registration failures.
+      res.status(200).json({
+        success: true,
+        optionalSkipped: true,
+        message: 'Device registration skipped (optional)',
+        warning: result.error || 'Failed to register device',
+      });
     }
   } catch (error) {
     console.error('Device registration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    // Notifications are optional: fail-open to avoid blocking onboarding/sign-in.
+    res.status(200).json({
+      success: true,
+      optionalSkipped: true,
+      message: 'Device registration skipped (optional)',
+      warning: 'Internal server error',
+    });
   }
 });
 
@@ -86,11 +98,23 @@ router.post('/unregister', authenticate, async (req: Request, res: Response) => 
     if (result.success) {
       res.status(200).json({ success: true, message: 'Device unregistered successfully' });
     } else {
-      res.status(500).json({ error: result.error || 'Failed to unregister device' });
+      // Notifications are optional: don't block user flows on cleanup failures.
+      res.status(200).json({
+        success: true,
+        optionalSkipped: true,
+        message: 'Device unregistration skipped (optional)',
+        warning: result.error || 'Failed to unregister device',
+      });
     }
   } catch (error) {
     console.error('Device unregistration error:', error);
-    res.status(500).json({ error: 'Internal server error' });
+    // Notifications are optional: fail-open to avoid blocking onboarding/sign-in.
+    res.status(200).json({
+      success: true,
+      optionalSkipped: true,
+      message: 'Device unregistration skipped (optional)',
+      warning: 'Internal server error',
+    });
   }
 });
 
