@@ -239,6 +239,8 @@ export type SpeechAttemptDetail = {
   phonological_analysis?: Record<string, unknown> | null;
   /** SODA analyzer payload; omitted for phonological attempts */
   soda_analysis?: Record<string, unknown> | null;
+  /** Analyzer wrong-word flag; null if not provided */
+  wrong_word?: boolean | null;
 };
 
 async function recordSpeechOutcome(
@@ -274,6 +276,9 @@ async function recordSpeechOutcome(
       }
       if (detail.soda_analysis !== undefined) {
         row.soda_analysis = detail.soda_analysis;
+      }
+      if (detail.wrong_word !== undefined) {
+        row.wrong_word = detail.wrong_word;
       }
     }
     const { error } = await supabase.from('user_speech_attempts').insert(row);
@@ -545,7 +550,7 @@ router.get('/history', authenticate, async (req: Request, res: Response) => {
 
     const { data, error } = await supabase
       .from('user_speech_attempts')
-      .select('id, created_at, is_pass, severity, speech_level, is_kid_attempt, expected_word, expected_sound, transcribed_word, error_type, confidence, game_type, word_id, attempt_number, game_level, analysis_model, phonological_analysis, soda_analysis')
+      .select('id, created_at, is_pass, severity, speech_level, is_kid_attempt, expected_word, expected_sound, transcribed_word, error_type, confidence, wrong_word, game_type, word_id, attempt_number, game_level, analysis_model, phonological_analysis, soda_analysis')
       .eq('user_id', userId)
       .eq('is_kid_attempt', true)
       .order('created_at', { ascending: false })
@@ -830,6 +835,8 @@ router.post(
             model === 'soda'
               ? buildSodaAnalysisSnapshot(sodaResponse as Record<string, unknown>)
               : undefined,
+          wrong_word:
+            typeof sodaResponse.wrong_word === 'boolean' ? sodaResponse.wrong_word : null,
         };
         await recordSpeechOutcome(
           userId,
