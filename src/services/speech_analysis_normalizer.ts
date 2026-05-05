@@ -59,10 +59,14 @@ export function mapPhonologicalToSodaLike(
     ...phonologicalResponse,
     predicted:
       phonologicalResponse.predicted_text ??
+      phonologicalResponse.transcribed_text ??
       phonologicalResponse.predicted ??
       '',
     expected:
-      phonologicalResponse.expected_text ?? phonologicalResponse.expected ?? '',
+      phonologicalResponse.expected_text ??
+      phonologicalResponse.expected ??
+      phonologicalResponse.target_text ??
+      '',
     severity,
     error_type: errorType,
     base_phoneme: basePhoneme,

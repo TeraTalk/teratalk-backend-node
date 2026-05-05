@@ -606,9 +606,7 @@ router.post(
       const wordId = req.body.word_id as string | undefined;
       const gameTypeRaw = (req.body.game_type as string | undefined) || (req.body.game_id as string | undefined);
       const gameType =
-        gameTypeRaw === 'pizza_toppings'
-          ? 'pizza_toppings'
-          : 'candy_land';
+        gameTypeRaw === 'pizza_toppings' ? 'pizza_toppings' : gameTypeRaw === 'alphaspeak' ? 'alphaspeak' : 'candy_land';                                   
       const isKidTurnRaw = req.body.is_kid_turn;
       const isKidAttempt =
         isKidTurnRaw === false || isKidTurnRaw === 'false' ? false : true;
@@ -715,6 +713,9 @@ router.post(
         boundedSeverity !== null
           ? isPassForLevel(speechLevelBefore, boundedSeverity)
           : (sodaIsCorrect ?? false);
+
+      const wrongWord = sodaResponse.wrong_word === true;
+      const passBaselineAdjusted = wrongWord ? false : passBaseline;
 
       let gamePersonalizationOut: Record<string, unknown> = { ...gamePersonalization };
       if (isMlHintsEnabled()) {
